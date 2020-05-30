@@ -329,3 +329,80 @@ fillCol(
   }) 
 ) 
 ```
+
+Analysis
+========
+
+Row {data-height=80}
+---------------------
+
+### min HR
+
+```{r}
+sliderInput('minHR', value=140, min=140, max=200,
+            'Only take values into consideration that are above this heart rate.')
+```
+
+### HR group size
+```{r}
+sliderInput('hrGroupSize', value=1, min=1, max=5, step=1,
+            'Try to smooth the index by grouping neighbouring heart rate values.')
+```
+
+### max gradient
+```{r}
+sliderInput('maxGain', value=0.05, min=0, max=1, step=0.005,
+            'Remove all data pairs where the absolute estimated altitude gradient is smaller than this value (prefer flat segments).')
+```
+
+### min group size
+```{r}
+sliderInput('minGroup', value=15, min=1, max=100,
+            'Ignore data pairs wich occured fewer than this value')
+```
+
+
+Row {.tabset}
+---
+
+```{r}
+analysisdata <- reactive({
+  rangedata() %>%
+    select(c('gain', 'pace', 'hr')) %>%
+    filter(hr >= input$minHR) %>%
+    filter(abs(gain) <= input$maxGain) %>%
+    mutate(hrg=floor(hr/input$hrGroupSize)*input$hrGroupSize) %>%
+    group_by(hrg) %>%
+    filter(n()>input$minGroup) %>%
+    mutate(med=median(pace), avg=mean(pace),
+           lwr=median(pace)-sd(pace), upr=median(pace)+sd(pace)) %>%
+    filter((abs(pace- median(pace)) <= 2 * sd(pace)))
+})
+```
+
+### HR-Pace Index
+
+```{r}
+
+renderPlot({
+  data <- analysisdata()
+
+  ggplot(data, aes(hrg, pace)) +
+    scale_x_continuous(name='Heart Rate', breaks=unique(data$hrg)) +
+    scale_y_continuous(trans = "reverse") +
+    geom_point() +
+    geom_smooth(method='loess', n=20)
+
+})
+```
+
+### Gradient Histogram
+
+```{r}
+renderPlot({
+  data <- analysisdata()
+
+  ggplot(data, aes(abs(gain))) +
+    geom_histogram()
+})
+```
