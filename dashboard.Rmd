@@ -1,0 +1,331 @@
+---
+title: "Runboard"
+output: 
+  flexdashboard::flex_dashboard:
+    css: styles.css
+    theme: united
+    orientation: rows
+    social: menu
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(cycleRtools)
+library(dplyr)
+library(leaflet)
+library(tidyr)
+library(dygraphs)
+library(xts)
+library(stringr)
+library(elevatr)
+library(rgdal)
+library(ggplot2)
+
+# helpers
+source("helpers/data.R")
+```
+
+
+Sidebar {.sidebar}
+==================
+
+### Open activity:
+
+```{r}
+fileInput('fitFile', label='Only .fit files are supported')
+```
+
+
+### Heart Rate Zones
+
+```{r}
+selectInput('hrmethod', 'HR based on', c('Lactate Threshold', 'Maximum HR'))
+sliderInput('hrthresh', 'HR in bpm', 170, min=150, max=220)
+```
+
+### Elevation Correction
+
+If your device does not have a barometric sensor, try to correct GPS data with a [external radar data](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html).
+
+```{r}
+checkboxInput('fixElevation', label='Fix Elevation', value=FALSE)
+```
+
+```{r}
+numericInput('currentLocation', '', value=1)
+dateInput('rangeStart', '', NULL)
+dateInput('rangeStop', '', NULL)
+
+```
+
+```{r}
+
+# takes forever - calls java *cough*
+rawdata <- reactive({
+  req(input$fitFile)
+  elevationCache(NULL) # drop the cache
+  read_fit(input$fitFile$datapath, format=F)
+})
+
+# data cleaning and fixing
+fitdata <- reactive({
+  df <- rawdata() %>%
+    tbl_df %>%
+    run_rename_select %>%
+    run_fix_units %>%
+    run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
+    run_add_gain %>%
+    run_add_pace
+  if (input$fixElevation && is.null(elevationCache())) {
+    elevationCache(df$altitude)
+  }
+  df
+})
+
+# limit data to range from dygraph
+rangedata <- reactive({
+  fitdata() %>%
+    run_filter_fitrange(start=input$rangeStart, stop=input$rangeStop) %>%
+    run_add_hrzone(breaks=hrBreaks(), labels=hrLabels())
+})
+
+mapdata <- reactive({
+  tres <- fitdata() %>%
+            mutate(td=timestamp - lag(timestamp)) %>%
+            select('td') %>%
+            drop_na() %>% 
+            summarise(mean(td))
+  rangedata() %>%
+    filter(!(row_number() %% max(tres, 5))) # take everyt 5th for plotting
+})
+
+# depends on maximum hr in range
+# used to restrict the extent of HR-Zone-plot
+hrBreaks <- reactive({
+  thresh <- input$hrthresh
+  # https://www.researchgate.net/figure/The-5-Zone-Intensity-Scale-Used-by-the-Norwegian-Olympic-Federation-and-the-3-Zone-and_tbl1_259652575
+  breaks <- thresh * c(0.72, 0.82, 0.87, 0.92, 1)
+  if (str_detect(input$hrmethod, 'Lactate')) {
+    breaks <- breaks / 0.92
+  }
+  breaks <- round(breaks)
+  c(min(breaks[1]-1, min(fitdata()$hr)), breaks)
+})
+
+# statics
+elevationCache <- reactiveVal(NULL)
+hrLabels <- reactiveVal(c('Z1', 'Z2', 'Z3', 'Z4', 'Z5'))
+hrColors <- c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1')
+hlCallbackJs <- 'function(event, x, points, row, seriesName){
+  Shiny.setInputValue("currentLocation", row);
+  for (div of document.getElementsByClassName("dygraphs")) {
+    var obj = window.HTMLWidgets.getInstance(div);
+    obj.dygraph.setSelection(row);
+  }
+}'
+```
+
+Summary
+=======
+
+Row
+---
+
+### Pace {.value-box}
+
+```{r}
+avgPace <- reactive({
+  data <- rangedata()
+  d <- ( tail(data$distance, n=1) - head(data$distance, n=1) ) / 1000
+  t <- as.numeric(
+    difftime(tail(data$timestamp, n=1), data$timestamp[1], unit='mins')
+  )
+  pace <- t/d
+  pre <- floor(pace)
+  list(string=sprintf('%d:%02d min/km', pre, floor(60 * (pace - pre))),
+       numeric=pace)
+})
+
+renderValueBox({
+  value <- avgPace()
+  valueBox(value = value$string,
+           icon = "fa-tachometer-alt",
+           color = 'success')
+           #color = if (value$numeric < 6) 'success' else 'primary')
+})
+```
+
+### Distance {.value-box}
+
+```{r}
+distance <- reactive({
+  data <- rangedata()
+  d <- ( tail(data$distance, n=1) - head(data$distance, n=1) ) / 1000
+  list(string=sprintf('%0.1f km', d), numeric=d)
+})
+
+renderValueBox({
+  value = distance()
+  valueBox(
+    value = value$string,
+    icon = "fa-road",
+    color = 'success'
+  )
+    #color = if (value$numeric > 10) 'success' else 'primary')
+})
+```
+
+
+### Elevation Gain (possibly imprecise) {.value-box}
+
+```{r}
+elGain <- reactive({
+  gains <- rangedata()$gain
+  gain <- floor(sum( gains[gains>0] ))
+  list(string=sprintf('%d m', gain), numeric=gain)
+})
+
+renderValueBox({
+  value <- elGain()
+  valueBox(
+    value = value$string,
+    icon = "fa-mountain",
+    color = 'success'
+  )
+})
+```
+
+### Average HR {.value-box}
+
+```{r}
+avgHR <- reactive({
+  avghr <- round(mean(rangedata()$hr))
+  list(string=sprintf('%d bpm', avghr), numeric=avghr)
+})
+
+renderValueBox({
+  value <- avgHR()
+  valueBox(
+    value = value$string,
+    icon = "fa-heartbeat",
+    color = 'danger'
+  )
+})
+```
+
+Row
+---
+
+### Map {data-width=50%}
+
+```{r}
+
+output$map <- renderLeaflet({
+  map <- leaflet() %>% 
+    setView(lat=0, lng=0, zoom=2) %>%
+    addTiles()
+  map
+})
+
+# clear, when we load new data
+observe({
+  data <- rawdata() %>% drop_na()
+  proxy <- leafletProxy('map')
+  proxy %>%
+    clearMarkers()
+})
+
+# remove current marker when range and/or input changes
+observe({
+  data <- mapdata() %>% select(c('timestamp', 'lat', 'long')) %>% drop_na()
+  current <- fitdata() %>% slice(input$currentLocation)
+  proxy <- leafletProxy('map')
+  proxy %>%
+    clearGroup('current') %>%
+    addMarkers(lng=current$long, current$lat, group='current')
+})
+
+# draw current range
+observe({
+  data <- mapdata() %>% select(c('timestamp', 'lat', 'long', 'hrzone')) %>% drop_na()
+  proxy <- leafletProxy('map')
+  proxy %>%
+    clearMarkers() %>%
+    addCircleMarkers(lng=data[data$hrzone==hrLabels()[1], ]$long,
+                     lat=data[data$hrzone==hrLabels()[1], ]$lat,
+                     opacity=0.1, color='black', radius=8, fillColor=hrColors[1], fillOpacity=0.5) %>%
+    addCircleMarkers(lng=data[data$hrzone==hrLabels()[2], ]$long,
+                     lat=data[data$hrzone==hrLabels()[2], ]$lat,
+                     opacity=0.1, color='black', radius=8, fillColor=hrColors[2], fillOpacity=0.5) %>%
+    addCircleMarkers(lng=data[data$hrzone==hrLabels()[3], ]$long,
+                     lat=data[data$hrzone==hrLabels()[3], ]$lat,
+                     opacity=0.1, color='black', radius=8, fillColor=hrColors[3], fillOpacity=0.5) %>%
+    addCircleMarkers(lng=data[data$hrzone==hrLabels()[4], ]$long,
+                     lat=data[data$hrzone==hrLabels()[4], ]$lat,
+                     opacity=0.1, color='black', radius=8, fillColor=hrColors[4], fillOpacity=0.5) %>%
+    addCircleMarkers(lng=data[data$hrzone==hrLabels()[5], ]$long,
+                     lat=data[data$hrzone==hrLabels()[5], ]$lat,
+                     opacity=0.1, color='black', radius=8, fillColor=hrColors[5], fillOpacity=0.5) %>%
+    fitBounds(min(data$long), min(data$lat), max(data$long), max(data$lat))
+    #addPolylines(data=data, lat=~lat, lng=~long) %>%
+})
+
+observe({
+  a <- input$rangeStart
+  b <- input$rangeStop
+})
+
+leafletOutput('map')
+```
+
+### Charts {data-width=50%}
+
+```{r}
+fillCol(
+  flex = c(5,7),
+ 
+  renderDygraph({
+    hrB <- hrBreaks()
+    data <- fitdata()
+    tickerJs <- 'function(min, max, pixels, opts, dygraph, vals){return([])}'
+    
+    dygraph(xts(data[c('hr')], order.by=data$timestamp),
+            group='global') %>%
+      dyOptions(colors=c('black'), fillAlpha=0.1, fillGraph=TRUE) %>%
+      dyCallbacks(highlightCallback=hlCallbackJs) %>%
+      dyAxis("x", drawGrid=FALSE) %>%
+      dyAxis('y', valueRange=c(hrB[1], hrB[6] + 1), ticker=tickerJs) %>%
+      dyLimit(hrB[1], hrB[1], labelLoc="left", color="black") %>%
+      dyLimit(hrB[2], hrB[2], labelLoc="left", color="black") %>%
+      dyLimit(hrB[3], hrB[3], labelLoc="left", color="black") %>%
+      dyLimit(hrB[4], hrB[4], labelLoc="left", color="black") %>%
+      dyLimit(hrB[5], hrB[5], labelLoc="left", color="black") %>%
+      dyShading(hrB[1], hrB[2], color=hrColors[1], axis="y") %>%
+      dyShading(hrB[2], hrB[3], color=hrColors[2], axis="y") %>%
+      dyShading(hrB[3], hrB[4], color=hrColors[3], axis="y") %>%
+      dyShading(hrB[4], hrB[5], color=hrColors[4], axis="y") %>%
+      dyShading(hrB[5], hrB[6], color=hrColors[5], axis="y")
+  }),
+  
+  renderDygraph({
+    drawCallbackJs<- 'function(g, i){
+      Shiny.setInputValue("rangeStart", Dygraph.dateString_(g.xAxisRange()[0], "UTC"))
+      Shiny.setInputValue("rangeStop", Dygraph.dateString_(g.xAxisRange()[1], "UTC"))
+    }'
+    
+    data <- fitdata()
+    dygraph(xts(data[c('pace', 'altitude')],
+                order.by=data$timestamp), group='global') %>%
+      dyCallbacks(highlightCallback=hlCallbackJs,
+                  drawCallback=drawCallbackJs) %>%
+      dySeries("altitude", axis = 'y2') %>%
+      dyRangeSelector() %>%
+      dyAxis("y", valueRange=c(0, max(data$pace))) %>%
+      dyAxis("y2", valueRange=c(min(data$altitude),
+                                min(data$altitude) +
+                        (max(data$altitude) - min(data$altitude)) *2)) %>%
+      dyAxis("x", drawGrid = FALSE)
+  }) 
+) 
+```
