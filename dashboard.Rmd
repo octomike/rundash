@@ -92,12 +92,14 @@ rangedata <- reactive({
 
 mapdata <- reactive({
   tres <- fitdata() %>%
-            mutate(td=timestamp - lag(timestamp)) %>%
+            mutate(td=as.numeric(timestamp - lag(timestamp))) %>%
             select('td') %>%
             drop_na() %>% 
-            summarise(mean(td))
+            summarise(mean(td)) %>%
+            pull()
+
   rangedata() %>%
-    filter(!(row_number() %% max(tres, 5))) # take everyt 5th for plotting
+    filter(!(row_number() %% max(floor(tres), 5))) # take everyt 5th for plotting
 })
 
 # depends on maximum hr in range
