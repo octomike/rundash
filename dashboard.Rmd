@@ -226,7 +226,7 @@ Row
 output$map <- renderLeaflet({
   map <- leaflet() %>% 
     setView(lat=0, lng=0, zoom=2) %>%
-    addTiles()
+    addProviderTiles(providers$CartoDB.Positron)
   map
 })
 
@@ -256,19 +256,19 @@ observe({
     clearMarkers() %>%
     addCircleMarkers(lng=data[data$hrzone==hrLabels()[1], ]$long,
                      lat=data[data$hrzone==hrLabels()[1], ]$lat,
-                     opacity=0.1, color='black', radius=8, fillColor=hrColors[1], fillOpacity=0.5) %>%
+                     stroke=FALSE, radius=4, fillColor=hrColors[1], fillOpacity=1) %>%
     addCircleMarkers(lng=data[data$hrzone==hrLabels()[2], ]$long,
                      lat=data[data$hrzone==hrLabels()[2], ]$lat,
-                     opacity=0.1, color='black', radius=8, fillColor=hrColors[2], fillOpacity=0.5) %>%
+                     stroke=FALSE, radius=4, fillColor=hrColors[2], fillOpacity=1) %>%
     addCircleMarkers(lng=data[data$hrzone==hrLabels()[3], ]$long,
                      lat=data[data$hrzone==hrLabels()[3], ]$lat,
-                     opacity=0.1, color='black', radius=8, fillColor=hrColors[3], fillOpacity=0.5) %>%
+                     stroke=FALSE, radius=4, fillColor=hrColors[3], fillOpacity=1) %>%
     addCircleMarkers(lng=data[data$hrzone==hrLabels()[4], ]$long,
                      lat=data[data$hrzone==hrLabels()[4], ]$lat,
-                     opacity=0.1, color='black', radius=8, fillColor=hrColors[4], fillOpacity=0.5) %>%
+                     stroke=FALSE, radius=4, fillColor=hrColors[4], fillOpacity=1) %>%
     addCircleMarkers(lng=data[data$hrzone==hrLabels()[5], ]$long,
                      lat=data[data$hrzone==hrLabels()[5], ]$lat,
-                     opacity=0.1, color='black', radius=8, fillColor=hrColors[5], fillOpacity=0.5) %>%
+                     stroke=FALSE, radius=4, fillColor=hrColors[5], fillOpacity=1) %>%
     fitBounds(min(data$long), min(data$lat), max(data$long), max(data$lat))
     #addPolylines(data=data, lat=~lat, lng=~long) %>%
 })
