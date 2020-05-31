@@ -1,13 +1,13 @@
 run_rename_select <- function(data){
   
   cols <- list()
-  cols$timestamp = 'record.timestamp.s.'
-  cols$speed = 'record.enhanced_speed.m.s.'
-  cols$lat = 'record.position_lat.semicircles.'
-  cols$long = 'record.position_long.semicircles.'
-  cols$distance = 'record.distance.m.'
-  cols$hr = 'record.heart_rate.bpm.'
-  cols$altitude = 'record.altitude.m.'
+  cols$timestamp = 'timestamp'
+  cols$speed = 'speed'
+  cols$lat = 'position_lat'
+  cols$long = 'position_long'
+  cols$distance = 'distance'
+  cols$hr = 'heart_rate'
+  cols$altitude = 'altitude'
 
   data %>%
     rename(!!!cols) %>%
@@ -16,9 +16,7 @@ run_rename_select <- function(data){
 
 run_fix_units <- function(data){
   data %>%
-    mutate(lat=lat*180/2**31, long=long*180/2**31) %>%
-    mutate(timestamp=as.POSIXct(timestamp, tz='UTC', origin="1989-12-31")) %>%
-    mutate(altitude = (altitude + 500) * 5 / 70)
+    mutate(timestamp=as.POSIXct(timestamp, tz='UTC', origin="1989-12-31"))
 }
 
 run_fix_elevation <- function(data, skip=TRUE, cache=NULL){

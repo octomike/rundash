@@ -10,8 +10,10 @@ runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
+library(devtools)
+install_github('octomike/fit')
+
 library(flexdashboard)
-library(cycleRtools)
 library(dplyr)
 library(leaflet)
 library(tidyr)
@@ -21,6 +23,9 @@ library(stringr)
 library(elevatr)
 library(rgdal)
 library(ggplot2)
+library(devtools)
+library(fit)
+
 
 # helpers
 source("helpers/data.R")
@@ -41,7 +46,7 @@ fileInput('fitFile', label='Only .fit files are supported')
 
 ```{r}
 selectInput('hrmethod', 'HR based on', c('Lactate Threshold', 'Maximum HR'))
-sliderInput('hrthresh', 'HR in bpm', 170, min=150, max=220)
+sliderInput('hrthresh', 'HR in bpm', 180, min=150, max=220)
 ```
 
 ### Elevation Correction
@@ -56,7 +61,6 @@ checkboxInput('fixElevation', label='Fix Elevation', value=FALSE)
 numericInput('currentLocation', '', value=1)
 dateInput('rangeStart', '', NULL)
 dateInput('rangeStop', '', NULL)
-
 ```
 
 ```{r}
@@ -65,22 +69,33 @@ dateInput('rangeStop', '', NULL)
 rawdata <- reactive({
   req(input$fitFile)
   elevationCache(NULL) # drop the cache
-  read_fit(input$fitFile$datapath, format=F)
+  read.fit(input$fitFile$datapath)
 })
 
 # data cleaning and fixing
 fitdata <- reactive({
-  df <- rawdata() %>%
-    tbl_df %>%
-    run_rename_select %>%
-    run_fix_units %>%
-    run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
-    run_add_gain %>%
-    run_add_pace
-  if (input$fixElevation && is.null(elevationCache())) {
-    elevationCache(df$altitude)
-  }
-  df
+    df <- rawdata()$record %>%
+      tbl_df %>%
+      run_rename_select %>%
+      run_fix_units %>%
+      run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
+      run_add_gain %>%
+      run_add_pace
+    if (input$fixElevation && is.null(elevationCache())) {
+      elevationCache(df$altitude)
+    }
+    if (str_detect(input$hrmethod, 'Lactate')) {
+      if ('threshold_heart_rate' %in% names(rawdata()$zones_target)) {
+        value <- rawdata()$zones_target$threshold_heart_rate
+        updateSliderInput(session, 'hrthresh', label='HR in bpm (from fit file)', min=150, max=220, value=value)
+      }
+    } else {
+      if ('max_heart_rate' %in% names(rawdata()$zones_target)) {
+        value <- rawdata()$zones_target$max_heart_rate
+        updateSliderInput(session, 'hrthresh', label='HR in bpm (from fit file)', min=150, max=220, value=value)
+      }
+    }
+    df
 })
 
 # limit data to range from dygraph
@@ -236,7 +251,7 @@ output$map <- renderLeaflet({
 
 # clear, when we load new data
 observe({
-  data <- rawdata() %>% drop_na()
+  data <- rawdata()$record %>% drop_na()
   proxy <- leafletProxy('map')
   proxy %>%
     clearMarkers()
