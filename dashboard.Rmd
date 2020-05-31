@@ -21,6 +21,7 @@ library(elevatr)
 library(rgdal)
 library(ggplot2)
 library(devtools)
+library(lubridate)
 library(fit) # install_github('octomike/fit')
 
 
@@ -174,13 +175,31 @@ renderValueBox({
 })
 ```
 
+### Time {.value-box}
+
+```{r}
+runTime <- reactive({
+  data <- rangedata() %>% slice(1, n()) %>%  select('timestamp') %>% pull
+  diff <- as.numeric(data[2] - data[1], units='secs')
+  list(string=tolower(seconds_to_period(diff)), numeric=diff)
+})
+
+renderValueBox({
+  value <- runTime()
+  valueBox(value = value$string,
+           icon = "fa-stopwatch",
+           color = 'success')
+           #color = if (value$numeric < 6) 'success' else 'primary')
+})
+```
+
 ### Distance {.value-box}
 
 ```{r}
 distance <- reactive({
   data <- rangedata()
   d <- ( tail(data$distance, n=1) - head(data$distance, n=1) ) / 1000
-  list(string=sprintf('%0.1f km', d), numeric=d)
+  list(string=sprintf('%0.2f km', d), numeric=d)
 })
 
 renderValueBox({
@@ -195,7 +214,7 @@ renderValueBox({
 ```
 
 
-### Elevation Gain (possibly imprecise) {.value-box}
+### Elevation Gain (imprecise) {.value-box}
 
 ```{r}
 elGain <- reactive({
@@ -208,7 +227,7 @@ renderValueBox({
   value <- elGain()
   valueBox(
     value = value$string,
-    icon = "fa-mountain",
+    icon = "fa-signal",
     color = 'success'
   )
 })
