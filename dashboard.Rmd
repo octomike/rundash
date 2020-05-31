@@ -10,9 +10,6 @@ runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
-library(devtools)
-install_github('octomike/fit')
-
 library(flexdashboard)
 library(dplyr)
 library(leaflet)
@@ -24,7 +21,7 @@ library(elevatr)
 library(rgdal)
 library(ggplot2)
 library(devtools)
-library(fit)
+library(fit) # install_github('octomike/fit')
 
 
 # helpers
