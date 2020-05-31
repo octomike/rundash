@@ -373,11 +373,13 @@ Analysis
 Row {data-height=80}
 ---------------------
 
-### min HR
+### HR range
 
 ```{r}
-sliderInput('minHR', value=140, min=140, max=200,
-            'Only take values into consideration that are above this heart rate.')
+renderUI({
+  sliderInput('HRrange', value=c(hrBreaks()[2],hrBreaks()[5]), min=110, max=220,
+              'Limit analysis to this heart rate range.')
+})
 ```
 
 ### HR group size
@@ -406,7 +408,8 @@ Row {.tabset}
 analysisdata <- reactive({
   rangedata() %>%
     select(c('gain', 'pace', 'hr')) %>%
-    filter(hr >= input$minHR) %>%
+    filter(hr >= input$HRrange[1]) %>%
+    filter(hr <= input$HRrange[2]) %>%
     filter(abs(gain) <= input$maxGain) %>%
     mutate(hrg=floor(hr/input$hrGroupSize)*input$hrGroupSize) %>%
     group_by(hrg) %>%
@@ -425,7 +428,8 @@ renderPlot({
   data <- analysisdata()
 
   ggplot(data, aes(hrg, pace)) +
-    scale_x_continuous(name='Heart Rate', breaks=unique(data$hrg)) +
+    scale_x_continuous(name='Heart Rate', breaks=unique(data$hrg),
+                       limits=c(input$HRrange[1], input$HRrange[2])) +
     scale_y_continuous(trans = "reverse") +
     geom_point() +
     geom_smooth(method='loess', n=20)
