@@ -406,16 +406,28 @@ analysisdata <- reactive({
 ### HR-Pace Index
 
 ```{r}
-
 renderPlot({
+  req(input$HRrange)
   data <- analysisdata()
 
   ggplot(data, aes(hrg, pace)) +
+    geom_rect(mapping=aes(xmin=-Inf, xmax=Inf), fill=hrColors[5],
+              ymin=-Inf, ymax=Inf, alpha=1) +
+    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[5]), fill=hrColors[4],
+              ymin=-Inf, ymax=Inf, alpha=1) +
+    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[4]), fill=hrColors[3],
+              ymin=-Inf, ymax=Inf, alpha=1) +
+    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[3]), fill=hrColors[2],
+              ymin=-Inf, ymax=Inf, alpha=1) +
+    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[2]), fill=hrColors[1],
+              ymin=-Inf, ymax=Inf, alpha=1) +
     scale_x_continuous(name='Heart Rate', breaks=unique(data$hrg),
-                       limits=c(input$HRrange[1], input$HRrange[2])) +
+                       limits=c(input$HRrange[1], input$HRrange[2]),
+                       sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2, labels=hrLabels())) +
+    geom_vline(xintercept = hrBreaks()[2:5]) +
     scale_y_continuous(trans = "reverse") +
     geom_point() +
-    geom_smooth(method='loess', n=20)
+    geom_smooth(formula=y~x, method='loess', n=20)
 
 })
 ```
