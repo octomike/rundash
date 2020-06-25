@@ -22,6 +22,40 @@ run_rename_select <- function(data){
     select(!!!names(cols))
 }
 
+run_fix_resolution <- function(data){
+
+  durations <- lead(data$timestamp) - data$timestamp
+  durations <- durations[1 : (length(durations) - 1)]
+  if ( mean(durations[length(durations)-1]) == 1 ) {
+    return(data)
+  }
+  message(mean(durations[length(durations)-1]))
+  message('Attempting to fix low-resolution data')
+  datafull <- data.frame(matrix(ncol=length(names(data)),
+                                nrow=0))
+  colnames(datafull) <- names(data)
+  for(td in 1:(nrow(data)-1) ){
+    currrow <- data[td,]
+    nextrow <- data[td+1,]
+    dur <- as.numeric(durations[td], units='secs')
+    # add start record
+    datafull <- rbind(datafull, currrow)
+    # interpolate intermediate records
+    for(tinterp in 1:(dur-1)){
+      irow <- list(timestamp = currrow$timestamp + tinterp,
+                   lat = currrow$lat + tinterp * (nextrow$lat - currrow$lat) / dur,
+                   long = currrow$long + tinterp * (nextrow$long - currrow$long) / dur,
+                   distance = currrow$distance + tinterp * (nextrow$distance - currrow$distance) / dur,
+                   speed = currrow$speed + tinterp * (nextrow$speed - currrow$speed) / dur,
+                   altitude = currrow$altitude + tinterp * (nextrow$altitude - currrow$altitude) / dur,
+                   hr = round(currrow$hr + tinterp * (nextrow$hr - currrow$hr) / dur))
+      datafull <- rbind(datafull, irow)
+    }
+  }
+  # append the last record and return
+  rbind(datafull, data[nrow(data),])
+}
+
 run_fix_units <- function(data){
   data %>%
     mutate(timestamp=as.POSIXct(timestamp, tz='UTC', origin="1989-12-31"))

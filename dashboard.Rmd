@@ -89,6 +89,7 @@ fitdata <- reactive({
     df <- raw$record %>%
       tbl_df %>%
       run_rename_select %>%
+      run_fix_resolution %>%
       run_fix_units %>%
       run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
       run_add_gain %>%
