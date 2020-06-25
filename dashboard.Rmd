@@ -23,6 +23,9 @@ library(ggplot2)
 library(devtools)
 library(lubridate)
 library(fit) # install_github('octomike/fit')
+library(zoo)
+
+options(shiny.reactlog = FALSE)
 
 
 # helpers
@@ -122,6 +125,8 @@ fitdata <- reactive({
       run_fix_units %>%
       run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
       run_add_pace
+
+    # cache elevation fix
     if (input$fixElevation && is.null(elevationCache())) {
       elevationCache(df$altitude)
     }
@@ -135,10 +140,11 @@ rangedata <- reactive({
     run_add_hrzone(breaks=hrBreaks(), labels=hrLabels())
 })
 
+# reduce resolution for a quicker map
 mapdata <- reactive({
   rd <- rangedata()
   tres <- rd %>%
-            mutate(td=as.numeric(timestamp - lag(timestamp))) %>%
+            mutate(td=as.numeric(timestamp - lag(timestamp), units='secs')) %>%
             select('td') %>%
             drop_na() %>% 
             summarise(mean(td)) %>%
@@ -202,9 +208,7 @@ avgPace <- reactive({
     difftime(tail(data$timestamp, n=1), data$timestamp[1], unit='mins')
   )
   pace <- t/d
-  pre <- floor(pace)
-  list(string=sprintf('%d:%02d min/km', pre, floor(60 * (pace - pre))),
-       numeric=pace)
+  list(string=sprintf('%s min/km', format_pace(pace)), numeric=pace)
 })
 
 renderValueBox({
@@ -449,30 +453,41 @@ Row {.tabset}
 
 ```{r}
 renderPlot({
-  req(input$HRrange)
   data <- analysisdata()
 
-  ggplot(data, aes(hrg, pace)) +
-    geom_rect(mapping=aes(xmin=-Inf, xmax=Inf), fill=hrColors[5],
-              ymin=-Inf, ymax=Inf, alpha=1) +
-    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[5]), fill=hrColors[4],
-              ymin=-Inf, ymax=Inf, alpha=1) +
-    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[4]), fill=hrColors[3],
-              ymin=-Inf, ymax=Inf, alpha=1) +
-    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[3]), fill=hrColors[2],
-              ymin=-Inf, ymax=Inf, alpha=1) +
-    geom_rect(mapping=aes(xmin=-Inf, xmax=hrBreaks()[2]), fill=hrColors[1],
-              ymin=-Inf, ymax=Inf, alpha=1) +
-    scale_x_continuous(name='Heart Rate', breaks=unique(data$hrg),
+  baseplot <- ggplot(data) +
+    geom_rect(mapping=aes(ymin=-Inf, ymax=Inf), fill=hrColors[5],
+              xmin=-Inf, xmax=Inf, alpha=1) +
+    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[5]), fill=hrColors[4],
+              xmin=-Inf, xmax=Inf, alpha=1) +
+    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[4]), fill=hrColors[3],
+              xmin=-Inf, xmax=Inf, alpha=1) +
+    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[3]), fill=hrColors[2],
+              xmin=-Inf, xmax=Inf, alpha=1) +
+    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[2]), fill=hrColors[1],
+              xmin=-Inf, xmax=Inf, alpha=1) +
+    scale_y_continuous(name='Heart Rate', breaks=unique(data$hr),
                        limits=c(input$HRrange[1], input$HRrange[2]),
-                       sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2, labels=hrLabels())) +
-    geom_vline(xintercept = hrBreaks()[2:5]) +
-    scale_y_continuous(trans = "reverse") +
-    geom_point() +
-    geom_smooth(formula=y~x, method='loess', n=20)
+                       sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2,
+                                           labels=hrLabels())) +
+    geom_hline(yintercept = hrBreaks()[2:5]) +
+    scale_x_continuous(trans = "identity") + # reverse
+    geom_point(aes(speed, hr))
+
+  if(nrow(data) >= 10){
+    m <- loess(hr ~ speed, data = data, span=0.75)
+    md <- data.frame(speed=data$speed, hr=m$fitted)
+    baseplot +
+      geom_smooth(aes(speed, hr), formula=y~x, method='loess', span=0.75) +
+      geom_smooth(aes(speed, hr), formula=y~x, method='lm', se=FALSE, color='red', linetype='dashed')
+  } else {
+    baseplot +
+      ggtitle('Not enough data')
+  }
 
 })
 ```
+
 
 ### Gradient Histogram
 
@@ -480,7 +495,32 @@ renderPlot({
 renderPlot({
   data <- analysisdata()
 
-  ggplot(data, aes(abs(gain))) +
+  ggplot(data, aes(abs(slope))) +
     geom_histogram()
+})
+```
+
+Row {data-height=80}
+--------------------
+
+### Lactate Threshold (modified D-Max) {.value-box}
+
+```{r}
+hrdp <- reactive({
+  data <- analysisdata()
+  tryCatch(
+    {
+    hrdp <- calc_hrdp(data)
+    list(string=sprintf('%s min/km | %.0f bpm', format_pace(hrdp$pace), round(hrdp$hr)),
+         numeric=hrdp$speed)
+    }, error = function(cond) {
+      message('Could not calculate hrdp')
+      list(string=cond$message)
+    })
+})
+
+renderValueBox({
+  value <- hrdp()
+  valueBox(value = value$string, icon = "fa-tachometer-alt", color = 'primary')
 })
 ```

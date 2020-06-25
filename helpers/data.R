@@ -125,3 +125,51 @@ run_filter_fitrange <- function(df, start=NULL, stop=NULL){
   }
   df %>% filter(timestamp >= start, timestamp <= stop)
 }
+
+format_pace <- function(pace){
+  pre <- floor(pace)
+  sprintf('%d:%02d', pre, floor(60 * (pace - pre)))
+}
+
+calc_hrdp <- function(data, span=0.7){
+  data <- data %>% arrange(speed)
+  if(nrow(data) < 10){
+    stop('not enough data')
+  }
+  gdata <- data %>%
+              group_by(hr) %>%
+              summarise(var=var(speed)) %>%
+              drop_na %>%
+              pull
+  gvar <- var(data$speed)
+  meanvar <- mean(gdata)
+  if( 1.5 * meanvar >= gvar ) {
+    stop('data too scattered')
+  }
+
+  # let's, go
+  hrdp <- list()
+
+  # fit linear model through all data and get coefficients
+  modellm <- lm(hr ~ speed, data = data)
+  intercept <- modellm$coefficients[[1]]
+  slope <- modellm$coefficients[[2]]
+
+  # fit non-linear as in plot
+  model <- loess(hr ~ speed, data = data, span=span)
+  data$hrfit <- model$fitted
+  # get distance from non-linear fitted values to linear fit
+  data$dist <- ( data$hrfit - data$speed * slope - intercept) / sqrt(slope**2 + 1)
+  data$distfo <- (data$dist - lag(data$dist)) / (data$speed - lag(data$speed))
+  # zero points in first order estimate
+  data <- data %>% drop_na() %>% mutate(zeros = as.logical((distfo >0) - (lag(distfo)>0)) )
+
+  # collect results
+  hrdp$speed <- data %>% filter(dist > 0, zeros==T) %>% tail(1) %>% select('speed') %>% pull()
+  if( length(hrdp$speed) == 0 ){
+    stop('could not find a local maximum')
+  }
+  hrdp$pace <- 60/3.6/hrdp$speed
+  hrdp$hr <- data %>% filter(speed==hrdp$speed) %>% select('hrfit') %>% tail(1) %>% pull() %>% round()
+  hrdp
+}
