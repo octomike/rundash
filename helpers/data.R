@@ -1,15 +1,23 @@
 run_rename_select <- function(data){
   
   cols <- list()
+  drops <- c()
+  if('enhanced_speed' %in% names(data) && 'speed' %in% names(data)){
+    drops <- c(drops, 'speed')
+  }
+  if('enhanced_altitude' %in% names(data) && 'altitude' %in% names(data)){
+    drops <- c(drops, 'altitude')
+  }
   cols$timestamp = 'timestamp'
-  cols$speed = 'speed'
   cols$lat = 'position_lat'
   cols$long = 'position_long'
   cols$distance = 'distance'
-  cols$hr = 'heart_rate'
-  cols$altitude = 'altitude'
+  cols$hr <- 'heart_rate'
+  cols$speed <- 'enhanced_speed'
+  cols$altitude <- 'enhanced_altitude'
 
   data %>%
+    select(-drops) %>%
     rename(!!!cols) %>%
     select(!!!names(cols))
 }
