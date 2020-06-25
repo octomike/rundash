@@ -76,10 +76,19 @@ run_fix_elevation <- function(data, skip=TRUE, cache=NULL){
   }
 }
 
-run_add_gain <- function(data){
+run_add_masks <- function(data, slopeWindow, hrWindow, speedWindow, slopeLimit, hrLimit, speedLimit){
   data %>%
-    mutate(gain=altitude - lag(altitude)) %>%
-    replace_na(list(gain=0))
+    mutate(slope = (altitude - lag(altitude)) /
+                  as.numeric(timestamp - lag(timestamp), units='secs')) %>%
+    mutate(hrfo = (hr - lag(hr)) /
+                  as.numeric(timestamp - lag(timestamp), units='secs')) %>%
+    mutate(speedfo = (speed - lag(speed)) /
+                  as.numeric(timestamp - lag(timestamp), units='secs')) %>%
+    replace_na(list(slope=0, hrfo=0, speedfo=0)) %>%
+    mutate(slopemask = abs(rollmean(slope, k=slopeWindow, align='right', fill=0)) <= slopeLimit) %>%
+    mutate(hrmask = abs(rollmean(hrfo, k=hrWindow, align='right', fill=0)) <= hrLimit) %>%
+    mutate(speedmask = abs(rollmean(speedfo, k=speedWindow, align='right', fill=0)) <= speedLimit) %>%
+    mutate(combinedmask = speedmask & hrmask & slopemask)
 }
 
 run_add_pace <- function(data){
