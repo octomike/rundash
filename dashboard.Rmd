@@ -27,6 +27,21 @@ library(fit) # install_github('octomike/fit')
 
 # helpers
 source("helpers/data.R")
+
+# global variables
+elevationCache <- reactiveVal(NULL)
+
+hrLabels <- reactiveVal(c('Z1', 'Z2', 'Z3', 'Z4', 'Z5'))
+hrMethod <- reactiveVal(NULL)
+methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
+hrColors <- c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1')
+hlCallbackJs <- 'function(event, x, points, row, seriesName){
+  Shiny.setInputValue("currentLocation", row);
+  for (div of document.getElementsByClassName("dygraphs")) {
+    var obj = window.HTMLWidgets.getInstance(div);
+    obj.dygraph.setSelection(row);
+  }
+}'
 ```
 
 
@@ -43,8 +58,8 @@ fileInput('fitFile', label='Only .fit files are supported')
 ### Heart Rate Zones
 
 ```{r}
-selectInput('hrmethod', 'HR based on', c('Lactate Threshold', 'Maximum HR'))
-sliderInput('hrthresh', 'HR in bpm', 180, min=150, max=220)
+selectInput('hrmethod', 'HR based on', choices=methodLabels)
+sliderInput('hrthresh', 'HR in bpm', value=180, min=150, max=220)
 ```
 
 ### Elevation Correction
@@ -75,19 +90,33 @@ rawdata <- reactive({
 # data cleaning and fixing
 fitdata <- reactive({
     raw <- rawdata()
-    if (str_detect(input$hrmethod, 'Lactate')) {
-      if ('threshold_heart_rate' %in% names(raw$zones_target)) {
-        value <- raw$zones_target$threshold_heart_rate
-        updateSliderInput(session, 'hrthresh', label='HR in bpm (from fit file)', min=150, max=220, value=value)
+    if ( str_detect(input$hrmethod, 'Automatic') ) {
+      if ( 'threshold_heart_rate' %in% names(raw$zones_target) ) {
+        updateSliderInput(session, 'hrthresh',label='Lactate HR in bpm (from fit file)',
+                          min=150, max=220, value=raw$zones_target$threshold_heart_rate)
+        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
+        hrMethod('lactate')
       }
-    } else {
-      if ('max_heart_rate' %in% names(raw$zones_target)) {
-        value <- raw$zones_target$max_heart_rate
-        updateSliderInput(session, 'hrthresh', label='HR in bpm (from fit file)', min=150, max=220, value=value)
+      else if ( 'max_heart_rate' %in% names(raw$zones_target) ) {
+        updateSliderInput(session, 'hrthresh', label='Max HR in bpm (from fit file)',
+                          min=150, max=220, value=raw$zones_target$max_heart_rate)
+        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
+        hrMethod('max')
       }
     }
+    else if ( str_detect(input$hrmethod, 'Lactate') ) {
+      updateSliderInput(session, 'hrthresh', label='Lactate HR in bpm',
+                        min=150, max=220, value=180)
+      updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[2])
+      hrMethod('lactate')
+    }
+    else {
+      updateSliderInput(session, 'hrthresh', label='Max HR in bpm',
+                        min=150, max=220, value=180)
+      updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[3])
+      hrMethod('max')
+    }
     df <- raw$record %>%
-      tbl_df %>%
       run_rename_select %>%
       run_fix_resolution %>%
       run_fix_units %>%
@@ -144,28 +173,17 @@ analysisdata <- reactive({
 # depends on maximum hr in range
 # used to restrict the extent of HR-Zone-plot
 hrBreaks <- reactive({
+  req(input$hrthresh, input$fitFile)
   thresh <- input$hrthresh
   # https://www.researchgate.net/figure/The-5-Zone-Intensity-Scale-Used-by-the-Norwegian-Olympic-Federation-and-the-3-Zone-and_tbl1_259652575
   breaks <- thresh * c(0.72, 0.82, 0.87, 0.92, 1)
-  if (str_detect(input$hrmethod, 'Lactate')) {
+  if ( hrMethod() == 'lactate' ) {
     breaks <- breaks / 0.92
   }
   breaks <- round(breaks)
   c(min(breaks[1]-1, min(fitdata()$hr)), breaks)
 })
 
-elevationCache <- reactiveVal(NULL)
-
-# statics
-hrLabels <- reactiveVal(c('Z1', 'Z2', 'Z3', 'Z4', 'Z5'))
-hrColors <- c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1')
-hlCallbackJs <- 'function(event, x, points, row, seriesName){
-  Shiny.setInputValue("currentLocation", row);
-  for (div of document.getElementsByClassName("dygraphs")) {
-    var obj = window.HTMLWidgets.getInstance(div);
-    obj.dygraph.setSelection(row);
-  }
-}'
 ```
 
 Summary
