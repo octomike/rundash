@@ -172,6 +172,6 @@ calc_hrdp <- function(data, span=0.7){
     stop('could not find a local maximum')
   }
   hrdp$pace <- 60/3.6/hrdp$speed
-  hrdp$hr <- data %>% filter(speed==hrdp$speed) %>% select('hrfit') %>% tail(1) %>% pull() %>% round()
+  hrdp$hr <- data %>% filter(speed==hrdp$speed) %>% select('hrfit') %>% tail(1) %>% pull()
   hrdp
 }
