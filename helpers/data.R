@@ -133,6 +133,8 @@ format_pace <- function(pace){
 
 calc_hrdp <- function(data, span=0.7){
   data <- data %>% arrange(speed)
+
+  # some custom checks
   if(nrow(data) < 10){
     stop('not enough data')
   }
@@ -147,7 +149,7 @@ calc_hrdp <- function(data, span=0.7){
     stop('data too scattered')
   }
 
-  # let's, go
+  # let's go
   hrdp <- list()
 
   # fit linear model through all data and get coefficients
