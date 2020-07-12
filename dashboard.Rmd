@@ -32,10 +32,8 @@ options(shiny.reactlog = FALSE)
 source("helpers/data.R")
 
 # global variables
-elevationCache <- reactiveVal(NULL)
-
-hrLabels <- reactiveVal(c('Z1', 'Z2', 'Z3', 'Z4', 'Z5'))
-hrMethod <- reactiveVal(NULL)
+hrLabels <- c('Z1', 'Z2', 'Z3', 'Z4', 'Z5')
+rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL)
 methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
 hrColors <- c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1')
 hlCallbackJs <- 'function(event, x, points, row, seriesName){
@@ -86,7 +84,7 @@ dateInput('rangeStop', '', NULL)
 # rawdata contains $records timeseries and some metadata
 rawdata <- reactive({
   req(input$fitFile)
-  elevationCache(NULL) # drop the cache
+  rv$elevationCache <- NULL # drop the cache
   read.fit(input$fitFile$datapath)
 })
 
@@ -98,37 +96,37 @@ fitdata <- reactive({
         updateSliderInput(session, 'hrthresh',label='Lactate HR in bpm (from fit file)',
                           min=150, max=220, value=raw$zones_target$threshold_heart_rate)
         updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
-        hrMethod('lactate')
+        rv$hrMethod <- 'lactate'
       }
       else if ( 'max_heart_rate' %in% names(raw$zones_target) ) {
         updateSliderInput(session, 'hrthresh', label='Max HR in bpm (from fit file)',
                           min=150, max=220, value=raw$zones_target$max_heart_rate)
         updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
-        hrMethod('max')
+        rv$hrMethod <- 'max'
       }
     }
     else if ( str_detect(input$hrmethod, 'Lactate') ) {
       updateSliderInput(session, 'hrthresh', label='Lactate HR in bpm',
                         min=150, max=220, value=180)
       updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[2])
-      hrMethod('lactate')
+      rv$hrMethod <- 'lactate'
     }
     else {
       updateSliderInput(session, 'hrthresh', label='Max HR in bpm',
                         min=150, max=220, value=180)
       updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[3])
-      hrMethod('max')
+      rv$hrMethod <- 'max'
     }
     df <- raw$record %>%
       run_rename_select %>%
       run_fix_resolution %>%
       run_fix_units %>%
-      run_fix_elevation(skip=!input$fixElevation, cache=elevationCache()) %>%
+      run_fix_elevation(skip=!input$fixElevation, cache=rv$elevationCache) %>%
       run_add_pace
 
     # cache elevation fix
-    if (input$fixElevation && is.null(elevationCache())) {
-      elevationCache(df$altitude)
+    if (input$fixElevation && is.null(rv$elevationCache)) {
+      rv$elevationCache <- df$altitude
     }
     df
 })
@@ -137,7 +135,7 @@ fitdata <- reactive({
 rangedata <- reactive({
   fitdata() %>%
     run_filter_fitrange(start=input$rangeStart, stop=input$rangeStop) %>%
-    run_add_hrzone(breaks=hrBreaks(), labels=hrLabels())
+    run_add_hrzone(breaks=hrBreaks(), labels=hrLabels)
 })
 
 # reduce resolution for a quicker map
@@ -179,11 +177,11 @@ analysisdata <- reactive({
 # depends on maximum hr in range
 # used to restrict the extent of HR-Zone-plot
 hrBreaks <- reactive({
-  req(input$hrthresh, input$fitFile)
+  req(input$hrthresh, input$fitFile, rv$hrMethod)
   thresh <- input$hrthresh
   # https://www.researchgate.net/figure/The-5-Zone-Intensity-Scale-Used-by-the-Norwegian-Olympic-Federation-and-the-3-Zone-and_tbl1_259652575
-  breaks <- thresh * c(0.72, 0.82, 0.87, 0.92, 1)
-  if ( hrMethod() == 'lactate' ) {
+  breaks <- thresh * c(0.72, 0.82, 0.87, 0.9, 21)
+  if ( rv$hrMethod == 'lactate' ) {
     breaks <- breaks / 0.92
   }
   breaks <- round(breaks)
@@ -311,7 +309,7 @@ observe({
 observe({
   data <- mapdata() %>% select(c('lat', 'long', 'hrzone')) %>% drop_na()
 
-  hrL = hrLabels()
+  hrL = hrLabels
   dz1 <- data %>% filter(hrzone==hrL[1]) %>% select('lat', 'long')
   dz2 <- data %>% filter(hrzone==hrL[2]) %>% select('lat', 'long')
   dz3 <- data %>% filter(hrzone==hrL[3]) %>% select('lat', 'long')
@@ -469,7 +467,7 @@ renderPlot({
     scale_y_continuous(name='Heart Rate', breaks=unique(data$hr),
                        limits=c(input$HRrange[1], input$HRrange[2]),
                        sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2,
-                                           labels=hrLabels())) +
+                                           labels=hrLabels)) +
     geom_hline(yintercept = hrBreaks()[2:5]) +
     scale_x_continuous(trans = "identity") + # reverse
     geom_point(aes(speed, hr))
