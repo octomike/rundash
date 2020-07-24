@@ -76,10 +76,16 @@ run_fix_elevation <- function(data, skip=TRUE, cache=NULL){
   }
 }
 
+run_add_slope <- function(data){
+    data <- data %>%
+              mutate(slope = (altitude - lag(altitude)) /
+                             as.numeric(timestamp - lag(timestamp), units='secs'))
+    data$slope[1] <- 0
+    data
+}
+
 run_add_masks <- function(data, slopeWindow, hrWindow, speedWindow, slopeLimit, hrLimit, speedLimit){
   data %>%
-    mutate(slope = (altitude - lag(altitude)) /
-                  as.numeric(timestamp - lag(timestamp), units='secs')) %>%
     mutate(hrfo = (hr - lag(hr)) /
                   as.numeric(timestamp - lag(timestamp), units='secs')) %>%
     mutate(speedfo = (speed - lag(speed)) /
