@@ -33,10 +33,8 @@ source("helpers/data.R")
 source("helpers/plots.R")
 
 # global variables
-hrLabels <- c('Z1', 'Z2', 'Z3', 'Z4', 'Z5')
 rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL)
 methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
-hrColors <- c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1')
 hlCallbackJs <- 'function(event, x, points, row, seriesName){
   Shiny.setInputValue("currentLocation", row);
   for (div of document.getElementsByClassName("dygraphs")) {
@@ -136,7 +134,7 @@ fitdata <- reactive({
 rangedata <- reactive({
   fitdata() %>%
     run_filter_fitrange(start=input$rangeStart, stop=input$rangeStop) %>%
-    run_add_hrzone(breaks=hrBreaks(), labels=hrLabels)
+    run_add_hrzone(breaks=HR()$thresh, labels=HR()$label[1:5])
 })
 
 # reduce resolution for a quicker map
@@ -159,34 +157,55 @@ mapdata <- reactive({
 
 # prepare data for HRDP estimation
 analysisdata <- reactive({
-  rangedata() %>%
-    run_add_masks(slopeWindow=input$slopeWindow, hrWindow=input$hrWindow, speedWindow=input$speedWindow,
-                  slopeLimit=input$slopeLimit, hrLimit=input$hrLimit, speedLimit=input$speedLimit) %>%
-    select(c('slope', 'pace', 'hr', 'hrzone', 'speed', 'combinedmask')) %>%
-    filter(pace < 8) %>%
-    filter(hr >= input$HRrange[1]) %>%
-    filter(hr <= input$HRrange[2]) %>%
-    filter(combinedmask) %>%
-    group_by(hr) %>%
-    filter(n()>input$minGroup) %>%
-    filter((abs(pace - median(pace)) <= 2 * sd(pace))) %>%
-    mutate(med=median(speed), avg=mean(speed),
-           lwr=median(speed)-sd(speed), upr=median(speed) + sd(speed)) %>%
-    ungroup
+  rd <- rangedata()
+  tryCatch({
+    d <- rd %>%
+      run_add_masks(slopeWindow=input$slopeWindow, hrWindow=input$hrWindow,
+                    speedWindow=input$speedWindow, slopeLimit=input$slopeLimit,
+                    hrLimit=input$hrLimit, speedLimit=input$speedLimit) %>%
+      select(c('slope', 'pace', 'hr', 'hrzone', 'speed', 'combinedmask')) %>%
+      filter(pace < 8) %>%
+      filter(hr >= HR()$thresh[2]) %>%
+      filter(hr <= HR()$thresh[6]) %>%
+      filter(combinedmask) %>%
+      group_by(hr) %>%
+      filter(n()>input$minGroup) %>%
+      filter((abs(pace - median(pace)) <= 2 * sd(pace))) %>%
+      mutate(med=median(speed), avg=mean(speed),
+             lwr=median(speed)-sd(speed), upr=median(speed) + sd(speed)) %>%
+      ungroup
+  }, error=function(cond){
+    d <- rd %>%
+      run_add_masks(slopeWindow=input$slopeWindow, hrWindow=input$hrWindow,
+                    speedWindow=input$speedWindow, slopeLimit=input$slopeLimit,
+                    hrLimit=input$hrLimit, speedLimit=input$speedLimit) %>%
+      select(c('slope', 'pace', 'hr', 'hrzone', 'speed', 'combinedmask')) %>%
+      filter(pace < 8) %>%
+      filter(hr >= HR()$thresh[2])
+    print(head(d))
+  })
+  d
 })
 
 # depends on maximum hr in range
 # used to restrict the extent of HR-Zone-plot
-hrBreaks <- reactive({
+HR <- reactive({
   req(input$hrthresh, input$fitFile, rv$hrMethod)
+  print(paste('hrMethod: ', rv$hrMethod))
   thresh <- input$hrthresh
+  print(paste('thresh: ', thresh))
   # https://www.researchgate.net/figure/The-5-Zone-Intensity-Scale-Used-by-the-Norwegian-Olympic-Federation-and-the-3-Zone-and_tbl1_259652575
-  breaks <- thresh * c(0.72, 0.82, 0.87, 0.9, 21)
+  breaks <- thresh * c(0.72, 0.82, 0.87, 0.9, 1)
   if ( rv$hrMethod == 'lactate' ) {
     breaks <- breaks / 0.92
   }
   breaks <- round(breaks)
-  c(min(breaks[1]-1, min(fitdata()$hr)), breaks)
+  breaks <- c(min(breaks[1]-1, min(fitdata()$hr)), breaks)
+  print(paste('breaks: ', breaks))
+  # the return object
+  data.frame(color=c('#c4ced4', '#b0dcf7', '#b9dfa0', '#fbd89e', '#faa8b1', '#ffffff'),
+             label=c('Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Zmax'),
+             thresh=breaks)
 })
 
 ```
@@ -313,15 +332,15 @@ observe({
   leafletProxy('map') %>%
     clearMarkers() %>%
     fitBounds(min(data$lng), min(data$lat), max(data$lng), max(data$lat)) %>%
-    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[1]), fillColor=hrColors[1],
+    addCircleMarkers(data=data %>% filter(hrzone==HR()$label[1]), fillColor=HR()$color[1],
                      stroke=FALSE, radius=4, fillOpacity=1)  %>%
-    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[2]), fillColor=hrColors[2],
+    addCircleMarkers(data=data %>% filter(hrzone==HR()$label[2]), fillColor=HR()$color[2],
                      stroke=FALSE, radius=4, fillOpacity=1)  %>%
-    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[3]), fillColor=hrColors[3],
+    addCircleMarkers(data=data %>% filter(hrzone==HR()$label[3]), fillColor=HR()$color[3],
                      stroke=FALSE, radius=4, fillOpacity=1)  %>%
-    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[4]), fillColor=hrColors[4],
+    addCircleMarkers(data=data %>% filter(hrzone==HR()$label[4]), fillColor=HR()$color[4],
                      stroke=FALSE, radius=4, fillOpacity=1)  %>%
-    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[5]), fillColor=hrColors[5],
+    addCircleMarkers(data=data %>% filter(hrzone==HR()$label[5]), fillColor=HR()$color[5],
                      stroke=FALSE, radius=4, fillOpacity=1)
 })
 ```
@@ -332,7 +351,7 @@ observe({
 fillCol(
   flex = c(5,7),
   renderDygraph({
-    ZonePlot(fitdata, hrBreaks, hrColors, hlCallbackJs)
+    ZonePlot(fitdata, HR(), hlCallbackJs)
   }),
   renderDygraph({
     RacePlot(fitdata, hlCallbackJs)
@@ -406,7 +425,7 @@ Row {.tabset}
 
 ```{r}
 renderPlot({
-  HRPacePlot(analysisdata, hrColors, hrBreaks, hrLabels, rv)
+  HRPacePlot(analysisdata, HR(), rv)
 })
 ```
 

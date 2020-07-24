@@ -1,22 +1,22 @@
-HRPacePlot <- function(analysisdata, hrColors, hrBreaks, hrLabels, rv){
+HRPacePlot <- function(analysisdata, HR, rv){
     data <- analysisdata()
   
     plot <- ggplot(data) +
-      geom_rect(mapping=aes(ymin=-Inf, ymax=Inf), fill=hrColors[5],
+      geom_rect(mapping=aes(ymin=-Inf, ymax=Inf), fill=HR$color[5],
                 xmin=-Inf, xmax=Inf, alpha=1) +
-      geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[5]), fill=hrColors[4],
+      geom_rect(mapping=aes(ymin=-Inf, ymax=HR$thresh[5]), fill=HR$color[4],
                 xmin=-Inf, xmax=Inf, alpha=1) +
-      geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[4]), fill=hrColors[3],
+      geom_rect(mapping=aes(ymin=-Inf, ymax=HR$thresh[4]), fill=HR$color[3],
                 xmin=-Inf, xmax=Inf, alpha=1) +
-      geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[3]), fill=hrColors[2],
+      geom_rect(mapping=aes(ymin=-Inf, ymax=HR$thresh[3]), fill=HR$color[2],
                 xmin=-Inf, xmax=Inf, alpha=1) +
-      geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[2]), fill=hrColors[1],
+      geom_rect(mapping=aes(ymin=-Inf, ymax=HR$thresh[2]), fill=HR$color[1],
                 xmin=-Inf, xmax=Inf, alpha=1) +
       scale_y_continuous(name='Heart Rate', breaks=unique(data$hr),
-                         limits=c(hrBreaks()[2], hrBreaks()[6]),
-                         sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2,
-                                             labels=hrLabels)) +
-      geom_hline(yintercept = hrBreaks()[2:5]) +
+                         limits=c(HR$thresh[2], HR$thresh[6]),
+                         sec.axis = dup_axis(breaks=(HR$thresh[1:5] + HR$thresh[2:6])/2,
+                                             labels=HR$label[1:5])) +
+      geom_hline(yintercept = HR$thresh[2:5]) +
       scale_x_continuous(trans = "identity") + # reverse
       geom_point(aes(speed, hr))
   
@@ -67,9 +67,8 @@ RacePlot <- function(fitdata, hlCallbackJs){
     dyAxis("x", drawGrid = FALSE)
 }
 
-ZonePlot <- function(fitdata, hrBreaks, hrColors, hlCallbackJs){
+ZonePlot <- function(fitdata, HR, hlCallbackJs){
   data <- fitdata()
-  hrB <- hrBreaks()
   
   tickerJs <- 'function(min, max, pixels, opts, dygraph, vals){return([])}'
 
@@ -78,15 +77,15 @@ ZonePlot <- function(fitdata, hrBreaks, hrColors, hlCallbackJs){
     dyOptions(colors=c('black'), fillAlpha=0.1, fillGraph=TRUE) %>%
     dyCallbacks(highlightCallback=hlCallbackJs) %>%
     dyAxis("x", drawGrid=FALSE) %>%
-    dyAxis('y', valueRange=c(hrB[1], hrB[6] + 1), ticker=tickerJs) %>%
-    dyLimit(hrB[1], hrB[1], labelLoc="left", color="black") %>%
-    dyLimit(hrB[2], hrB[2], labelLoc="left", color="black") %>%
-    dyLimit(hrB[3], hrB[3], labelLoc="left", color="black") %>%
-    dyLimit(hrB[4], hrB[4], labelLoc="left", color="black") %>%
-    dyLimit(hrB[5], hrB[5], labelLoc="left", color="black") %>%
-    dyShading(hrB[1], hrB[2], color=hrColors[1], axis="y") %>%
-    dyShading(hrB[2], hrB[3], color=hrColors[2], axis="y") %>%
-    dyShading(hrB[3], hrB[4], color=hrColors[3], axis="y") %>%
-    dyShading(hrB[4], hrB[5], color=hrColors[4], axis="y") %>%
-    dyShading(hrB[5], hrB[6], color=hrColors[5], axis="y")
+    dyAxis('y', valueRange=c(HR$thresh[1], HR$thresh[6] + 1), ticker=tickerJs) %>%
+    dyLimit(HR$thresh[1], HR$thresh[1], labelLoc="left", color="black") %>%
+    dyLimit(HR$thresh[2], HR$thresh[2], labelLoc="left", color="black") %>%
+    dyLimit(HR$thresh[3], HR$thresh[3], labelLoc="left", color="black") %>%
+    dyLimit(HR$thresh[4], HR$thresh[4], labelLoc="left", color="black") %>%
+    dyLimit(HR$thresh[5], HR$thresh[5], labelLoc="left", color="black") %>%
+    dyShading(HR$thresh[1], HR$thresh[2], color=HR$color[1], axis="y") %>%
+    dyShading(HR$thresh[2], HR$thresh[3], color=HR$color[2], axis="y") %>%
+    dyShading(HR$thresh[3], HR$thresh[4], color=HR$color[3], axis="y") %>%
+    dyShading(HR$thresh[4], HR$thresh[5], color=HR$color[4], axis="y") %>%
+    dyShading(HR$thresh[5], HR$thresh[6], color=HR$color[5], axis="y")
 }

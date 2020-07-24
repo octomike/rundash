@@ -98,7 +98,7 @@ run_add_pace <- function(data){
 
 run_add_hrzone <- function(data, breaks, labels){
   # note that breaks for cut() differ in their meaning from breaks in shiny App
-  breaks <- c(-Inf, breaks[2:(length(breaks)-1)], Inf)
+  breaks <- c(-Inf, breaks[2:5], Inf)
   df <- data %>%
     mutate(hrzone = cut(hr, breaks=breaks, labels=labels))
   df
