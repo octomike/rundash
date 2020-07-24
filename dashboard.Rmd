@@ -30,6 +30,7 @@ options(shiny.reactlog = FALSE)
 
 # helpers
 source("helpers/data.R")
+source("helpers/plots.R")
 
 # global variables
 hrLabels <- c('Z1', 'Z2', 'Z3', 'Z4', 'Z5')
@@ -302,32 +303,25 @@ observe({
   current <- fitdata() %>% slice(input$currentLocation)
   leafletProxy('map') %>%
     clearGroup('current') %>%
-    addMarkers(lng=current$long, current$lat, group='current')
+    addMarkers(lng=current$long, lat=current$lat, group='current')
 })
 
 # draw current range
 observe({
-  data <- mapdata() %>% select(c('lat', 'long', 'hrzone')) %>% drop_na()
-
-  hrL = hrLabels
-  dz1 <- data %>% filter(hrzone==hrL[1]) %>% select('lat', 'long')
-  dz2 <- data %>% filter(hrzone==hrL[2]) %>% select('lat', 'long')
-  dz3 <- data %>% filter(hrzone==hrL[3]) %>% select('lat', 'long')
-  dz4 <- data %>% filter(hrzone==hrL[4]) %>% select('lat', 'long')
-  dz5 <- data %>% filter(hrzone==hrL[5]) %>% select('lat', 'long')
+  data <- mapdata() %>% select(c('lat', 'long', 'hrzone')) %>% drop_na() %>% rename(lng='long')
 
   leafletProxy('map') %>%
     clearMarkers() %>%
-    fitBounds(min(data$long), min(data$lat), max(data$long), max(data$lat)) %>%
-    addCircleMarkers(lng=dz1$long, lat=dz1$lat, fillColor=hrColors[1],
-                     stroke=FALSE, radius=4, fillOpacity=1) %>%
-    addCircleMarkers(lng=dz2$long, lat=dz2$lat, fillColor=hrColors[2],
-                     stroke=FALSE, radius=4, fillOpacity=1) %>%
-    addCircleMarkers(lng=dz3$long, lat=dz3$lat, fillColor=hrColors[3],
-                     stroke=FALSE, radius=4, fillOpacity=1) %>%
-    addCircleMarkers(lng=dz4$long, lat=dz4$lat, fillColor=hrColors[4],
-                     stroke=FALSE, radius=4, fillOpacity=1) %>%
-    addCircleMarkers(lng=dz5$long, lat=dz5$lat, fillColor=hrColors[5],
+    fitBounds(min(data$lng), min(data$lat), max(data$lng), max(data$lat)) %>%
+    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[1]), fillColor=hrColors[1],
+                     stroke=FALSE, radius=4, fillOpacity=1)  %>%
+    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[2]), fillColor=hrColors[2],
+                     stroke=FALSE, radius=4, fillOpacity=1)  %>%
+    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[3]), fillColor=hrColors[3],
+                     stroke=FALSE, radius=4, fillOpacity=1)  %>%
+    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[4]), fillColor=hrColors[4],
+                     stroke=FALSE, radius=4, fillOpacity=1)  %>%
+    addCircleMarkers(data=data %>% filter(hrzone==hrLabels[5]), fillColor=hrColors[5],
                      stroke=FALSE, radius=4, fillOpacity=1)
 })
 ```
@@ -337,50 +331,11 @@ observe({
 ```{r}
 fillCol(
   flex = c(5,7),
- 
   renderDygraph({
-    data <- fitdata()
-
-    hrB <- hrBreaks()
-    tickerJs <- 'function(min, max, pixels, opts, dygraph, vals){return([])}'
-
-    dygraph(xts(data[c('hr')], order.by=data$timestamp),
-            group='global') %>%
-      dyOptions(colors=c('black'), fillAlpha=0.1, fillGraph=TRUE) %>%
-      dyCallbacks(highlightCallback=hlCallbackJs) %>%
-      dyAxis("x", drawGrid=FALSE) %>%
-      dyAxis('y', valueRange=c(hrB[1], hrB[6] + 1), ticker=tickerJs) %>%
-      dyLimit(hrB[1], hrB[1], labelLoc="left", color="black") %>%
-      dyLimit(hrB[2], hrB[2], labelLoc="left", color="black") %>%
-      dyLimit(hrB[3], hrB[3], labelLoc="left", color="black") %>%
-      dyLimit(hrB[4], hrB[4], labelLoc="left", color="black") %>%
-      dyLimit(hrB[5], hrB[5], labelLoc="left", color="black") %>%
-      dyShading(hrB[1], hrB[2], color=hrColors[1], axis="y") %>%
-      dyShading(hrB[2], hrB[3], color=hrColors[2], axis="y") %>%
-      dyShading(hrB[3], hrB[4], color=hrColors[3], axis="y") %>%
-      dyShading(hrB[4], hrB[5], color=hrColors[4], axis="y") %>%
-      dyShading(hrB[5], hrB[6], color=hrColors[5], axis="y")
+    ZonePlot(fitdata, hrBreaks, hrColors, hlCallbackJs)
   }),
-  
   renderDygraph({
-    data <- fitdata()
-
-    drawCallbackJs<- 'function(g, i){
-      Shiny.setInputValue("rangeStart", Dygraph.dateString_(g.xAxisRange()[0], "UTC"))
-      Shiny.setInputValue("rangeStop", Dygraph.dateString_(g.xAxisRange()[1], "UTC"))
-    }'
-    
-    dygraph(xts(data[c('pace', 'altitude')],
-                order.by=data$timestamp), group='global') %>%
-      dyCallbacks(highlightCallback=hlCallbackJs,
-                  drawCallback=drawCallbackJs) %>%
-      dySeries("altitude", axis = 'y2') %>%
-      dyRangeSelector() %>%
-      dyAxis("y", valueRange=c(0, max(data$pace))) %>%
-      dyAxis("y2", valueRange=c(min(data$altitude),
-                                min(data$altitude) +
-                        (max(data$altitude) - min(data$altitude)) *2)) %>%
-      dyAxis("x", drawGrid = FALSE)
+    RacePlot(fitdata, hlCallbackJs)
   }) 
 ) 
 ```
@@ -451,38 +406,7 @@ Row {.tabset}
 
 ```{r}
 renderPlot({
-  data <- analysisdata()
-
-  baseplot <- ggplot(data) +
-    geom_rect(mapping=aes(ymin=-Inf, ymax=Inf), fill=hrColors[5],
-              xmin=-Inf, xmax=Inf, alpha=1) +
-    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[5]), fill=hrColors[4],
-              xmin=-Inf, xmax=Inf, alpha=1) +
-    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[4]), fill=hrColors[3],
-              xmin=-Inf, xmax=Inf, alpha=1) +
-    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[3]), fill=hrColors[2],
-              xmin=-Inf, xmax=Inf, alpha=1) +
-    geom_rect(mapping=aes(ymin=-Inf, ymax=hrBreaks()[2]), fill=hrColors[1],
-              xmin=-Inf, xmax=Inf, alpha=1) +
-    scale_y_continuous(name='Heart Rate', breaks=unique(data$hr),
-                       limits=c(input$HRrange[1], input$HRrange[2]),
-                       sec.axis = dup_axis(breaks=(hrBreaks()[1:5] + hrBreaks()[2:6])/2,
-                                           labels=hrLabels)) +
-    geom_hline(yintercept = hrBreaks()[2:5]) +
-    scale_x_continuous(trans = "identity") + # reverse
-    geom_point(aes(speed, hr))
-
-  if(nrow(data) >= 10){
-    m <- loess(hr ~ speed, data = data, span=0.75)
-    md <- data.frame(speed=data$speed, hr=m$fitted)
-    baseplot +
-      geom_smooth(aes(speed, hr), formula=y~x, method='loess', span=0.75) +
-      geom_smooth(aes(speed, hr), formula=y~x, method='lm', se=FALSE, color='red', linetype='dashed')
-  } else {
-    baseplot +
-      ggtitle('Not enough data')
-  }
-
+  HRPacePlot(analysisdata, hrColors, hrBreaks, hrLabels, rv)
 })
 ```
 
