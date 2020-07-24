@@ -121,7 +121,8 @@ fitdata <- reactive({
       run_fix_resolution %>%
       run_fix_units %>%
       run_fix_elevation(skip=!input$fixElevation, cache=rv$elevationCache) %>%
-      run_add_pace
+      run_add_pace %>%
+      run_add_slope
 
     # cache elevation fix
     if (input$fixElevation && is.null(rv$elevationCache)) {
@@ -241,6 +242,7 @@ renderValueBox({
 runTime <- reactive({
   data <- rangedata() %>% slice(1, n()) %>%  select('timestamp') %>% pull
   diff <- as.numeric(data[2] - data[1], units='secs')
+  diff <- round(diff, digits=2) # seconds_to_period carries floating point imprecision
   list(string=tolower(seconds_to_period(diff)), numeric=diff)
 })
 
@@ -271,7 +273,7 @@ renderValueBox({
 ```{r}
 elSlope <- reactive({
   slopes <- rangedata()$slope
-  slope <- floor(sum( slopes[slopes>0] ))
+  slope <- floor(sum(slopes[slopes>0]))
   list(string=sprintf('%d m', slope), numeric=slope)
 })
 
@@ -285,7 +287,7 @@ renderValueBox({
 
 ```{r}
 avgHR <- reactive({
-  avghr <- round(mean(rangedata()$hr))
+  avghr <- round(mean(rangedata()$hr, na.rm=T))
   list(string=sprintf('%d bpm', avghr), numeric=avghr)
 })
 

@@ -53,17 +53,24 @@ RacePlot <- function(fitdata, hlCallbackJs){
     Shiny.setInputValue("rangeStart", Dygraph.dateString_(g.xAxisRange()[0], "UTC"))
     Shiny.setInputValue("rangeStop", Dygraph.dateString_(g.xAxisRange()[1], "UTC"))
   }'
+  formatPaceJs <- 'function(value, opts, seriesName, dygraph, row, col){
+    valm = Math.floor(value)
+    vals = Math.round((value - valm) * 60)
+    vals = ("00" + vals).substr(-2,2)
+    return(valm + ":" + vals)
+  }'
   
   dygraph(xts(data[c('pace', 'altitude')],
               order.by=data$timestamp), group='global') %>%
     dyCallbacks(highlightCallback=hlCallbackJs,
                 drawCallback=drawCallbackJs) %>%
-    dySeries("altitude", axis = 'y2') %>%
+    dyOptions(fillAlpha = 0.3, connectSeparatedPoints = T) %>%
+    dySeries("altitude", axis = 'y2', strokeWidth = 0, fillGraph = T) %>%
     dyRangeSelector() %>%
-    dyAxis("y", valueRange=c(0, max(data$pace))) %>%
+    dyLegend(width=400) %>%
+    dyAxis("y", valueRange=c(0, 1.2 + max(data$pace)), valueFormatter=formatPaceJs) %>%
     dyAxis("y2", valueRange=c(min(data$altitude),
-                              min(data$altitude) +
-                      (max(data$altitude) - min(data$altitude)) *2)) %>%
+                              min(data$altitude) + (max(data$altitude) - min(data$altitude)) * 2)) %>%
     dyAxis("x", drawGrid = FALSE)
 }
 
