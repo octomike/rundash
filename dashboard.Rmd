@@ -167,11 +167,10 @@ analysisdata <- reactive({
       select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
       filter(pace < 8) %>%
       filter(hr >= HR()$thresh[2]) %>%
-      filter(hr <= HR()$thresh[6]) %>%
+      filter(speed >= quantile(speed, probs=c(input$lowerQuantile))) %>%
       group_by(hr) %>%
       filter((abs(speed - median(speed)) * as.numeric(input$removeOutlier)
               <= 2 * sd(speed))) %>%
-      filter(speed >= quantile(speed, probs=c(input$lowerQuantile))) %>%
       mutate(med=median(speed), avg=mean(speed),
              lwr=median(speed)-sd(speed), upr=median(speed) + sd(speed)) %>%
       ungroup
