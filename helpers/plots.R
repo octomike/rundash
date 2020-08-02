@@ -30,13 +30,9 @@ HRPacePlot <- function(analysisdata, HR, rv){
      
       hrdpval <- rv$hrdpCache
       if( !is.null(hrdpval) ){
-        p0 <- c(hrdpval$speed, hrdpval$hr)
-        data <- data.frame(x=c(3.5, hrdpval$speed), y=c(140, hrdpval$hr))
-        print(data)
-        print(predict(m, hrdpval$speed))
+        data <- data.frame(x=hrdpval$speed, y=hrdpval$hr)
         plot <- plot + 
-          geom_point(aes(x,y, size=5), data=data) +
-          geom_line(aes(x,y), data=data)
+          geom_point(aes(x,y, size=5), data=data)
       }
     } else {
       plot <- plot +
