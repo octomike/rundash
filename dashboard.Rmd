@@ -59,7 +59,10 @@ fileInput('fitFile', label='Only .fit files are supported')
 
 ```{r}
 selectInput('hrmethod', 'HR based on', choices=methodLabels)
-sliderInput('hrthresh', 'HR in bpm', value=180, min=150, max=220)
+renderUI({
+  req(rv$hrMethod)
+  sliderInput('hrthresh', 'HR in bpm', value=0, min=150, max=220)
+})
 ```
 
 ### Elevation Correction
@@ -92,15 +95,15 @@ fitdata <- reactive({
     raw <- rawdata()
     if ( str_detect(input$hrmethod, 'Automatic') ) {
       if ( 'threshold_heart_rate' %in% names(raw$zones_target) ) {
+        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
         updateSliderInput(session, 'hrthresh',label='Lactate HR in bpm (from fit file)',
                           min=150, max=220, value=raw$zones_target$threshold_heart_rate)
-        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
         rv$hrMethod <- 'lactate'
       }
       else if ( 'max_heart_rate' %in% names(raw$zones_target) ) {
+        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
         updateSliderInput(session, 'hrthresh', label='Max HR in bpm (from fit file)',
                           min=150, max=220, value=raw$zones_target$max_heart_rate)
-        updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
         rv$hrMethod <- 'max'
       }
     }
