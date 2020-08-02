@@ -12,27 +12,31 @@ HRPacePlot <- function(analysisdata, HR, rv){
                 xmin=-Inf, xmax=Inf, alpha=1) +
       geom_rect(mapping=aes(ymin=-Inf, ymax=HR$thresh[2]), fill=HR$color[1],
                 xmin=-Inf, xmax=Inf, alpha=1) +
-      scale_y_continuous(name='Heart Rate', breaks=unique(data$hr),
-                         limits=c(HR$thresh[2], HR$thresh[6]),
+      scale_y_continuous(name='Heart Rate (bpm)', breaks=seq(min(data$hr), max(data$hr), 2),
+                         limits=c(HR$thresh[2], max(max(data$hr)+1, HR$thresh[5])),
                          sec.axis = dup_axis(breaks=(HR$thresh[1:5] + HR$thresh[2:6])/2,
-                                             labels=HR$label[1:5])) +
+                                             labels=HR$label[1:5], name='Heart Rate Zone')) +
       geom_hline(yintercept = HR$thresh[2:5]) +
-      scale_x_continuous(trans = "identity") + # reverse
-      geom_point(aes(speed, hr))
+      scale_x_continuous(trans = "reverse", name='Pace (min/km)',
+                         breaks=seq(floor(min(data$pace)), ceiling(max(data$pace)), 1/12),
+                         labels=format_pace(seq(floor(min(data$pace)), ceiling(max(data$pace)), 1/12))) + # reverse
+      theme(text = element_text(size=20)) +
+      geom_point(aes(pace, hr))
   
     if(nrow(data) >= 10){
       span <- 0.75
-      m <- loess(hr ~ speed, data = data, span=span)
-      md <- data.frame(speed=data$speed, hr=m$fitted)
+      m <- loess(hr ~ pace, data = data, span=span)
+      md <- data.frame(pace=data$pace, hr=m$fitted)
       plot <- plot +
-        geom_smooth(aes(speed, hr), formula=y~x, method='loess', span=span) + # TODO run loess only once
-        geom_smooth(aes(speed, hr), formula=y~x, method='lm', se=FALSE, color='red', linetype='dashed')
+        geom_smooth(aes(pace, hr), formula=y~x, method='loess', span=span) + # TODO run loess only once
+        geom_smooth(aes(pace, hr), formula=y~x, method='lm', se=FALSE, color='red', linetype='dashed')
      
       hrdpval <- rv$hrdpCache
       if( !is.null(hrdpval) ){
-        data <- data.frame(x=hrdpval$speed, y=hrdpval$hr)
+        data <- data.frame(x=hrdpval$pace, y=hrdpval$hr)
         plot <- plot + 
-          geom_point(aes(x,y, size=5), data=data)
+          geom_point(aes(x,y,size=5), data=data) +
+          guides(size=FALSE)
       }
     } else {
       plot <- plot +

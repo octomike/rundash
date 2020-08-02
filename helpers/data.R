@@ -138,7 +138,7 @@ run_filter_fitrange <- function(df, start=NULL, stop=NULL){
 
 format_pace <- function(pace){
   pre <- floor(pace)
-  sprintf('%d:%02d', pre, floor(60 * (pace - pre)))
+  sprintf('%d:%02d', pre, round(60 * (pace - pre)))
 }
 
 calc_hrdp <- function(data, span=0.7){
