@@ -29,8 +29,8 @@ run_fix_resolution <- function(data){
   if ( mean(durations[length(durations)-1]) == 1 ) {
     return(data)
   }
-  message(mean(durations[length(durations)-1]))
-  message('Attempting to fix low-resolution data')
+  m <- mean(durations[length(durations)-1])
+  message(sprintf('Attempting to fix low-resolution data (rate = %d s)', m))
   datafull <- data.frame(matrix(ncol=length(names(data)),
                                 nrow=0))
   colnames(datafull) <- names(data)
