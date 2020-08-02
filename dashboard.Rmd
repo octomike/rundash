@@ -164,26 +164,20 @@ analysisdata <- reactive({
   rd <- rangedata()
   tryCatch({
     d <- rd %>%
-      run_add_masks(slopeWindow=input$slopeWindow, hrWindow=input$hrWindow,
-                    speedWindow=input$speedWindow, slopeLimit=input$slopeLimit,
-                    hrLimit=input$hrLimit, speedLimit=input$speedLimit) %>%
-      select(c('slope', 'pace', 'hr', 'hrzone', 'speed', 'combinedmask')) %>%
+      select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
       filter(pace < 8) %>%
       filter(hr >= HR()$thresh[2]) %>%
       filter(hr <= HR()$thresh[6]) %>%
-      filter(combinedmask) %>%
       group_by(hr) %>%
-      filter(n()>input$minGroup) %>%
-      filter((abs(pace - median(pace)) <= 2 * sd(pace))) %>%
+      filter((abs(speed - median(speed)) * as.numeric(input$removeOutlier)
+              <= 2 * sd(speed))) %>%
+      filter(speed >= quantile(speed, probs=c(input$lowerQuantile))) %>%
       mutate(med=median(speed), avg=mean(speed),
              lwr=median(speed)-sd(speed), upr=median(speed) + sd(speed)) %>%
       ungroup
   }, error=function(cond){
     d <- rd %>%
-      run_add_masks(slopeWindow=input$slopeWindow, hrWindow=input$hrWindow,
-                    speedWindow=input$speedWindow, slopeLimit=input$slopeLimit,
-                    hrLimit=input$hrLimit, speedLimit=input$speedLimit) %>%
-      select(c('slope', 'pace', 'hr', 'hrzone', 'speed', 'combinedmask')) %>%
+      select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
       filter(pace < 8) %>%
       filter(hr >= HR()$thresh[2])
     print(head(d))
@@ -370,57 +364,17 @@ Analysis
 Row {data-height=80}
 --------------------
 
-### HR range
+### Speed threshold
 ```{r}
-renderUI({
-  sliderInput('HRrange', value=c(hrBreaks()[2],hrBreaks()[6]), min=110, max=220,
-              'Limit analysis to this heart rate range.')
-})
+sliderInput('lowerQuantile', value=0.25, min=0, max=1.0, step=0.05,
+            'Drop lower quantile speed data')
 ```
 
-### slope window
+### Remove Outlier
 ```{r}
-sliderInput('slopeWindow', value=3, min=1, max=20, step=1,
-            'Average slope window.')
+checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 ```
 
-### HR window
-```{r}
-sliderInput('hrWindow', value=4, min=1, max=20, step=1,
-            'Average hr window.')
-```
-
-### speed window
-```{r}
-sliderInput('speedWindow', value=5, min=1, max=10, step=1,
-            'Average speed window.')
-```
-
-Row {data-height=80}
---------------------
-
-### min group size
-```{r}
-sliderInput('minGroup', value=10, min=1, max=100, '')
-```
-
-### slope Limit
-```{r}
-sliderInput('slopeLimit', value=0.1, min=0, max=10, step=0.1,
-            'Slope limit')
-```
-
-### HR Limit
-```{r}
-sliderInput('hrLimit', value=1, min=0, max=3, step=0.25,
-            'HR limit')
-```
-
-### speed Limit
-```{r}
-sliderInput('speedLimit', value=0.05, min=0, max=0.5, step=0.01,
-            'Speed limit')
-```
 
 Row {.tabset}
 ---
@@ -456,11 +410,13 @@ hrdp <- reactive({
   data <- analysisdata()
   tryCatch(
     {
-    hrdp <- calc_hrdp(data)
-    list(string=sprintf('%s min/km | %.0f bpm', format_pace(hrdp$pace), round(hrdp$hr)),
-         numeric=hrdp$speed)
+    hrdpval <- calc_hrdp(data)
+    rv$hrdpCache <- hrdpval
+    list(string=sprintf('%s min/km | %.0f bpm', format_pace(hrdpval$pace), round(hrdpval$hr)),
+         numeric=hrdpval$speed)
     }, error = function(cond) {
       message('Could not calculate hrdp')
+      message(cond$message)
       list(string=cond$message)
     })
 })
