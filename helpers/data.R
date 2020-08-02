@@ -113,8 +113,16 @@ run_add_hrzone <- function(data, breaks, labels){
 run_filter_fitrange <- function(df, start=NULL, stop=NULL){
   dfmin <- min(df$timestamp)
   dfmax <- max(df$timestamp)
+  if ( is.null(start) || is.null(stop) ) {
+    cat(sprintf('start/stop invalid: %s/%s\n', start, stop))
+    return(df)
+  }
   start <- as.POSIXct(start, tz='UTC', origin="1989-12-31")
   stop <- as.POSIXct(stop, tz='UTC', origin="1989-12-31")
+  if ( start > stop ) {
+    cat(sprintf('start > stop %s/%s\n', start, stop))
+    return(df)
+  }
   if (start > dfmax || start < dfmin ) {
     cat(sprintf('Invalid start %s\n', start))
     cat(sprintf('min/max: %s/%s\n', dfmin, dfmax))
@@ -123,10 +131,6 @@ run_filter_fitrange <- function(df, start=NULL, stop=NULL){
   if (stop > dfmax || stop < dfmin ) {
     cat(sprintf('Invalid stop %s\n', stop))
     cat(sprintf('min/max: %s/%s\n', dfmin, dfmax))
-    return(df)
-  }
-  if ( is.null(start) || is.null(stop) || start > stop ) {
-    cat(sprintf('start/stop invalid: %s/%s\n', start, stop))
     return(df)
   }
   df %>% filter(timestamp >= start, timestamp <= stop)
