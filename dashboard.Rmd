@@ -193,7 +193,7 @@ HR <- reactive({
   thresh <- input$hrthresh
   print(paste('thresh: ', thresh))
   # https://www.researchgate.net/figure/The-5-Zone-Intensity-Scale-Used-by-the-Norwegian-Olympic-Federation-and-the-3-Zone-and_tbl1_259652575
-  breaks <- thresh * c(0.72, 0.82, 0.87, 0.9, 1)
+  breaks <- thresh * c(0.72, 0.82, 0.87, 0.92, 1)
   if ( rv$hrMethod == 'lactate' ) {
     breaks <- breaks / 0.92
   }
