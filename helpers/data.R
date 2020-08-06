@@ -141,8 +141,7 @@ format_pace <- function(pace){
   sprintf('%d:%02d', pre, round(60 * (pace - pre)))
 }
 
-calc_hrdp <- function(data, span=0.7){
-  data <- data %>% arrange(speed)
+calc_hrdp <- function(data, lmfit, mfit){
 
   # some custom checks
   if(nrow(data) < 10){
@@ -162,14 +161,15 @@ calc_hrdp <- function(data, span=0.7){
   # let's go
   hrdp <- list()
 
-  # fit linear model through all data and get coefficients
-  modellm <- lm(hr ~ speed, data = data)
-  intercept <- modellm$coefficients[[1]]
-  slope <- modellm$coefficients[[2]]
+  # get values from pre-fitted linear and non-linear models
+  intercept <- lmfit$coefficients[[1]]
+  slope <- lmfit$coefficients[[2]]
+  print(head(data))
+  data$speed <- lmfit$x
+  data$hrfit <- mfit$fitted
+  data <- data %>% arrange(speed) %>% select(c('hrfit', 'speed'))
+  print(lmfit$coefficients)
 
-  # fit non-linear as in plot
-  model <- loess(hr ~ speed, data = data, span=span)
-  data$hrfit <- model$fitted
   # get distance from non-linear fitted values to linear fit
   data$dist <- ( data$hrfit - data$speed * slope - intercept) / sqrt(slope**2 + 1)
   data$distfo <- (data$dist - lag(data$dist)) / (data$speed - lag(data$speed))
@@ -177,6 +177,7 @@ calc_hrdp <- function(data, span=0.7){
   data <- data %>% drop_na() %>% mutate(zeros = as.logical((distfo >0) - (lag(distfo)>0)) )
 
   # collect results
+  print(head(data %>% filter(dist > 0, zeros==T)))
   hrdp$speed <- data %>% filter(dist > 0, zeros==T) %>% tail(1) %>% select('speed') %>% pull()
   if( length(hrdp$speed) == 0 ){
     stop('could not find a local maximum')
@@ -184,4 +185,68 @@ calc_hrdp <- function(data, span=0.7){
   hrdp$pace <- 60/3.6/hrdp$speed
   hrdp$hr <- data %>% filter(speed==hrdp$speed) %>% select('hrfit') %>% tail(1) %>% pull()
   hrdp
+}
+
+svm_data <- function(data, slopes){
+  svmdata <- data %>% select(c('hr', 'speed', 'slope'))
+  for(i in 1:slopes){
+    svmdata <- cbind(svmdata, lag(svmdata$slope, n=i, default=0))
+  }
+  names(svmdata) <- c(names(svmdata)[1:3], paste0('slope', seq(1:slopes)))
+  svmdata %>% select(-slope) %>% drop_na()
+}
+
+svm_predicted <- function(model, data, slopes){
+  # generate fitted values for speed based on 0-elevation predictions
+  xlen <- nrow(data)
+  xhat <- data.frame(speed=seq(min(data$speed), max(data$speed), length.out=xlen))
+  for(i in 1:slopes){
+    xhat <- cbind(xhat, numeric(xlen)) # zeros
+  }
+  names(xhat) <- c('speed', paste0('slope', seq(1:slopes)))
+  data.frame(x=xhat$speed, y=predict(model, xhat))
+}
+
+
+svm_lin <- function(data, slopes){
+  data <- svm_data(data, slopes)
+  # found params
+  cost <- 0.1
+  epsilon <- 0
+
+
+  st <- tune(svm, hr ~ ., data=data,
+             kernel='linear', ranges=list(epsilon=epsilon, cost=cost), fitted=FALSE,
+             cachesize=128, tunecontrol=tune.control(cross=10))
+  best <- st$best.model
+  res <- svm_predicted(best, data, slopes)
+
+  # get intercept/slope to append $coefficients
+  x0 <- cbind(t(numeric(1 + slopes)))
+  names(x0) <- c('speed', paste0('slope', seq(1:slopes)))
+  intercept <- predict(best, x0)
+  slope <- (res$y[2] - res$y[1]) / (res$x[2] - res$x[1])
+
+  best$coefficients <- c(intercept, slope)
+  best$fitted <- res$y
+  best$x <- res$x
+  best
+}
+
+svm_radial <- function(data, slopes){
+  data <- svm_data(data, slopes)
+  # found params
+  cost <- 0.1
+  epsilon <- 0
+  gamma <- c(0.1)
+
+  st <- tune(svm, hr ~ ., data=data,
+             kernel='radial', ranges=list(gamma=gamma, epsilon=epsilon, cost=cost), fitted=FALSE,
+             cachesize=128, tunecontrol=tune.control(cross=10))
+  best <- st$best.model
+  res <- svm_predicted(best, data, slopes)
+
+  best$fitted <- res$y
+  best$x <- res$x
+  best
 }

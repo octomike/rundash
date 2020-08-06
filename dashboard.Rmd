@@ -1,6 +1,6 @@
 ---
 title: "Runboard"
-output: 
+output:
   flexdashboard::flex_dashboard:
     css: styles.css
     theme: united
@@ -24,6 +24,7 @@ library(devtools)
 library(lubridate)
 library(fit) # install_github('octomike/fit')
 library(zoo)
+library(e1071)
 
 options(shiny.reactlog = FALSE)
 
@@ -33,7 +34,8 @@ source("helpers/data.R")
 source("helpers/plots.R")
 
 # global variables
-rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL)
+rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL,
+                     mfit=NULL, lmfit=NULL, lmspan=0.9)
 methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
 hlCallbackJs <- 'function(event, x, points, row, seriesName){
   Shiny.setInputValue("currentLocation", row);
@@ -147,7 +149,7 @@ mapdata <- reactive({
   tres <- rd %>%
             mutate(td=as.numeric(timestamp - lag(timestamp), units='secs')) %>%
             select('td') %>%
-            drop_na() %>% 
+            drop_na() %>%
             summarise(mean(td)) %>%
             pull()
 
@@ -161,6 +163,7 @@ mapdata <- reactive({
 
 # prepare data for HRDP estimation
 analysisdata <- reactive({
+  req(input$modelType)
   rd <- rangedata()
   tryCatch({
     d <- rd %>%
@@ -179,10 +182,22 @@ analysisdata <- reactive({
       select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
       filter(pace < 8) %>%
       filter(hr >= HR()$thresh[2])
-    print(head(d))
   })
+  if (grepl('SVM', input$modelType)) {
+    print('fitting SVM linear')
+    rv$lmfit <- svm_lin(d, slopes=7)
+    print('fitting SVM radial')
+    rv$mfit <- svm_radial(d, slopes=7)
+  } else {
+    print('fitting LOESS/LM models')
+    lmfit <- lm(hr ~ speed, data = d)
+    lmfit$x <- d$speed
+    rv$lmfit <- lmfit
+    rv$mfit <- loess(hr ~ speed, data = d, span=rv$lmspan)
+  }
   d
 })
+
 
 # depends on maximum hr in range
 # used to restrict the extent of HR-Zone-plot
@@ -353,8 +368,8 @@ fillCol(
   }),
   renderDygraph({
     RacePlot(fitdata, hlCallbackJs)
-  }) 
-) 
+  })
+)
 ```
 
 Analysis
@@ -374,6 +389,11 @@ sliderInput('lowerQuantile', value=0.25, min=0, max=1.0, step=0.05,
 checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 ```
 
+### Model
+```{r}
+radioButtons('modelType', 'Type of Model', choices = c('Loess/LM', 'SVM Regression'), selected = 'Loess/LM')
+```
+
 
 Row {.tabset}
 ---
@@ -383,7 +403,7 @@ Row {.tabset}
 
 ```{r}
 renderPlot({
-  HRPacePlot(analysisdata, HR(), rv)
+  HRPacePlot(analysisdata(), rv$lmfit, rv$mfit, HR(), rv)
 })
 ```
 
@@ -409,7 +429,9 @@ hrdp <- reactive({
   data <- analysisdata()
   tryCatch(
     {
-    hrdpval <- calc_hrdp(data)
+    hrdpval <- calc_hrdp(data, rv$lmfit, rv$mfit)
+    print(hrdpval)
+
     rv$hrdpCache <- hrdpval
     list(string=sprintf('%s min/km | %.0f bpm', format_pace(hrdpval$pace), round(hrdpval$hr)),
          numeric=hrdpval$speed)

@@ -1,6 +1,4 @@
-HRPacePlot <- function(analysisdata, HR, rv){
-    data <- analysisdata()
-  
+HRPacePlot <- function(data, lmfit, mfit, HR, rv){
     plot <- ggplot(data) +
       geom_rect(mapping=aes(ymin=-Inf, ymax=Inf), fill=HR$color[5],
                 xmin=-Inf, xmax=Inf, alpha=1) +
@@ -17,24 +15,24 @@ HRPacePlot <- function(analysisdata, HR, rv){
                          sec.axis = dup_axis(breaks=(HR$thresh[1:5] + HR$thresh[2:6])/2,
                                              labels=HR$label[1:5], name='Heart Rate Zone')) +
       geom_hline(yintercept = HR$thresh[2:5]) +
-      scale_x_continuous(trans = "reverse", name='Pace (min/km)',
-                         breaks=seq(floor(min(data$pace)), ceiling(max(data$pace)), 1/12),
-                         labels=format_pace(seq(floor(min(data$pace)), ceiling(max(data$pace)), 1/12))) + # reverse
+      # trans=reverse
+      scale_x_continuous(trans = "identity", name='Pace (min/km)',
+                         breaks=seq(floor(min(data$speed)), ceiling(max(data$speed)), 1/12),
+                         labels=format_pace(60/3.6/seq(floor(min(data$speed)), ceiling(max(data$speed)), 1/12))) + # reverse
       theme(text = element_text(size=20)) +
-      geom_point(aes(pace, hr))
-  
+      geom_point(aes(speed, hr))
+
     if(nrow(data) >= 10){
-      span <- 0.75
-      m <- loess(hr ~ pace, data = data, span=span)
-      md <- data.frame(pace=data$pace, hr=m$fitted)
       plot <- plot +
-        geom_smooth(aes(pace, hr), formula=y~x, method='loess', span=span) + # TODO run loess only once
-        geom_smooth(aes(pace, hr), formula=y~x, method='lm', se=FALSE, color='red', linetype='dashed')
-     
+        geom_line(aes(speed, hr), data=data.frame(speed=lmfit$x, hr=mfit$fitted),
+                  color='blue', size=1) +
+        geom_line(aes(speed, hr), data=data.frame(speed=lmfit$x, hr=lmfit$fitted),
+                  color='red', linetype='dashed', size=1)
+
       hrdpval <- rv$hrdpCache
       if( !is.null(hrdpval) ){
-        data <- data.frame(x=hrdpval$pace, y=hrdpval$hr)
-        plot <- plot + 
+        data <- data.frame(x=hrdpval$speed, y=hrdpval$hr)
+        plot <- plot +
           geom_point(aes(x,y,size=5), data=data) +
           guides(size=FALSE)
       }
@@ -59,7 +57,7 @@ RacePlot <- function(fitdata, hlCallbackJs){
     vals = ("00" + vals).substr(-2,2)
     return(valm + ":" + vals)
   }'
-  
+
   dygraph(xts(data[c('pace', 'altitude')],
               order.by=data$timestamp), group='global') %>%
     dyCallbacks(highlightCallback=hlCallbackJs,
@@ -76,7 +74,7 @@ RacePlot <- function(fitdata, hlCallbackJs){
 
 ZonePlot <- function(fitdata, HR, hlCallbackJs){
   data <- fitdata()
-  
+
   tickerJs <- 'function(min, max, pixels, opts, dygraph, vals){return([])}'
 
   dygraph(xts(data[c('hr')], order.by=data$timestamp),
