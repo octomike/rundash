@@ -26,6 +26,7 @@ library(fit) # install_github('octomike/fit')
 library(zoo)
 library(caret)
 library(doFuture)
+library(ring)
 
 options(shiny.reactlog = FALSE)
 
@@ -33,10 +34,12 @@ options(shiny.reactlog = FALSE)
 # helpers
 source("helpers/data.R")
 source("helpers/plots.R")
+source("helpers/control.R")
 
 # global variables
 rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL,
-                     mfit=NULL, lmfit=NULL, lmspan=0.9)
+                     mfit=NULL, lmfit=NULL, lmspan=1.0, logs=ring::ring_buffer_env(5),
+                     refresh=0)
 methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
 hlCallbackJs <- 'function(event, x, points, row, seriesName){
   Shiny.setInputValue("currentLocation", row);
@@ -83,6 +86,22 @@ numericInput('currentLocation', '', value=1)
 dateInput('rangeStart', '', NULL)
 dateInput('rangeStop', '', NULL)
 ```
+
+### Application Log
+
+```{r}
+observe({
+  updated <- rv$refresh
+  buf <- rv$logs
+  for(msg in buf$read(buf$used())){
+    message(msg)
+    renderText(msg)
+  }
+})
+```
+
+
+
 
 ```{r}
 
