@@ -24,7 +24,8 @@ library(devtools)
 library(lubridate)
 library(fit) # install_github('octomike/fit')
 library(zoo)
-library(e1071)
+library(caret)
+library(doFuture)
 
 options(shiny.reactlog = FALSE)
 
@@ -71,10 +72,10 @@ renderUI({
 
 If your device does not have a barometric sensor, try to correct GPS data with a [external radar data](https://cran.r-project.org/web/packages/elevatr/vignettes/introduction_to_elevatr.html).
 
+
 ```{r}
 checkboxInput('fixElevation', label='Fix Elevation', value=FALSE)
 ```
-
 
 ```{r}
 # hide inputs with css and use from dygraph JS callbacks
@@ -127,7 +128,7 @@ fitdata <- reactive({
       run_fix_units %>%
       run_fix_elevation(skip=!input$fixElevation, cache=rv$elevationCache) %>%
       run_add_pace %>%
-      run_add_slope
+      run_add_features
 
     # cache elevation fix
     if (input$fixElevation && is.null(rv$elevationCache)) {
@@ -164,12 +165,12 @@ mapdata <- reactive({
 # prepare data for HRDP estimation
 analysisdata <- reactive({
   req(input$modelType)
-  rd <- rangedata()
+  rd <- rangedata() %>%
+      select(c('slope', 'pace', 'hr', 'hrzone', 'hrchange', 'speed')) %>%
+      filter(pace < 8) %>%
+      filter(hr >= HR()$thresh[2])
   tryCatch({
     d <- rd %>%
-      select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
-      filter(pace < 8) %>%
-      filter(hr >= HR()$thresh[2]) %>%
       filter(speed >= quantile(speed, probs=c(input$lowerQuantile))) %>%
       group_by(hr) %>%
       filter((abs(speed - median(speed)) * as.numeric(input$removeOutlier)
@@ -178,18 +179,17 @@ analysisdata <- reactive({
              lwr=median(speed)-sd(speed), upr=median(speed) + sd(speed)) %>%
       ungroup
   }, error=function(cond){
-    d <- rd %>%
-      select(c('slope', 'pace', 'hr', 'hrzone', 'speed')) %>%
-      filter(pace < 8) %>%
-      filter(hr >= HR()$thresh[2])
+    message(cond)
   })
   if (grepl('SVM', input$modelType)) {
-    print('fitting SVM linear')
-    rv$lmfit <- svm_lin(d, slopes=7)
-    print('fitting SVM radial')
-    rv$mfit <- svm_radial(d, slopes=7)
+    message('fitting SVM linear')
+    rv$lmfit <- svm_lin(d, slopes=6, hrs=7)
+    message(sprintf("error %f\n", rv$lmfit$error))
+    message('fitting radial SVM linear')
+    rv$mfit <- svm_radial(d, slopes=6, hrs=7)
+    message(sprintf("error %f\n", rv$mfit$error))
   } else {
-    print('fitting LOESS/LM models')
+    message('fitting LOESS/LM models')
     lmfit <- lm(hr ~ speed, data = d)
     lmfit$x <- d$speed
     rv$lmfit <- lmfit
@@ -278,7 +278,6 @@ renderValueBox({
 })
 ```
 
-
 ### Elevation Slope (imprecise) {.value-box}
 
 ```{r}
@@ -307,7 +306,6 @@ renderValueBox({
   valueBox(value = value$string, icon = "fa-heartbeat", color = 'danger')
 })
 ```
-
 
 Row
 ---
@@ -394,10 +392,8 @@ checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 radioButtons('modelType', 'Type of Model', choices = c('Loess/LM', 'SVM Regression'), selected = 'Loess/LM')
 ```
 
-
 Row {.tabset}
 ---
-
 
 ### HR-Pace Index
 
@@ -406,7 +402,6 @@ renderPlot({
   HRPacePlot(analysisdata(), rv$lmfit, rv$mfit, HR(), rv)
 })
 ```
-
 
 ### Gradient Histogram
 

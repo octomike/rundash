@@ -82,13 +82,17 @@ run_fix_elevation <- function(data, skip=TRUE, cache=NULL){
   }
 }
 
-run_add_slope <- function(data){
+run_add_features <- function(data){
     data <- data %>%
               mutate(slope = (altitude - lag(altitude)) /
+                             as.numeric(timestamp - lag(timestamp), units='secs')) %>%
+              mutate(hrchange = (hr - lag(hr)) /
                              as.numeric(timestamp - lag(timestamp), units='secs'))
     data$slope[1] <- 0
+    data$hrchange[1] <- 0
     data
 }
+
 
 run_add_masks <- function(data, slopeWindow, hrWindow, speedWindow, slopeLimit, hrLimit, speedLimit){
   data %>%
@@ -193,66 +197,97 @@ calc_hrdp <- function(data, lmfit, mfit){
   hrdp
 }
 
-svm_data <- function(data, slopes){
-  svmdata <- data %>% select(c('hr', 'speed', 'slope'))
-  for(i in 1:slopes){
-    svmdata <- cbind(svmdata, lag(svmdata$slope, n=i, default=0))
+svm_prepare_data <- function(data, slopes, hrs){
+  base_features <- c('hr', 'speed', 'slope', 'hrchange')
+  svmdata <- data %>% select(all_of(base_features))
+  max_buckets <- floor(log2(nrow(svmdata)/2))
+  for(i in 0:min(slopes, max_buckets)){
+    #svmdata <- cbind(svmdata, lag(svmdata$slope, n=i, default=0))
+    k <- 2**(max_buckets - i)
+    ms <- rollmean(svmdata$slope, k,  align='right')
+    if(k>1){
+      ms <- c( cumsum(svmdata$slope[1:(k-1)])/(1:(k-1)), ms)
+    }
+    svmdata <- cbind(svmdata, ms)
   }
-  names(svmdata) <- c(names(svmdata)[1:3], paste0('slope', seq(1:slopes)))
-  svmdata %>% select(-slope) %>% drop_na()
+  for(i in 0:min(hrs, max_buckets)){
+    #svmdata <- cbind(svmdata, lag(svmdata$hrchange, n=i, default=0))
+    k <- 2**(max_buckets - i)
+    ms <- rollmean(svmdata$hrchange, k,  align='right')
+    if(k>1){
+      ms <- c( cumsum(svmdata$hrchange[1:(k-1)])/(1:(k-1)), ms)
+    }
+    svmdata <- cbind(svmdata, ms)
+  }
+  names(svmdata) <- c(base_features, paste0('slope', seq(0, slopes)), paste0('hrchange', seq(0, hrs)))
+  svmdata %>% select(-c('hrchange', 'slope')) %>% drop_na()
 }
 
-svm_predicted <- function(model, data, slopes){
+svm_predicted <- function(model, data, slopes, hrs){
   # generate fitted values for speed based on 0-elevation predictions
   xlen <- nrow(data)
   xhat <- data.frame(speed=seq(min(data$speed), max(data$speed), length.out=xlen))
-  for(i in 1:slopes){
+  for(i in 1:(2 + slopes + hrs)){
     xhat <- cbind(xhat, numeric(xlen)) # zeros
   }
-  names(xhat) <- c('speed', paste0('slope', seq(1:slopes)))
+  names(xhat) <- c('speed', paste0('slope', seq(0, slopes)), paste0('hrchange', seq(0, hrs)))
   data.frame(x=xhat$speed, y=predict(model, xhat))
 }
 
 
-svm_lin <- function(data, slopes){
-  data <- svm_data(data, slopes)
-  # found params
-  cost <- 0.1
-  epsilon <- 0
+svm_lin <- function(data, slopes=5, hrs=5, search=F){
+  data <- svm_prepare_data(data, slopes, hrs)
+  if( search ){
+    cost <- 10^seq(-10,2)
+    fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
+  } else {
+    cost <- 0.1
+    fitControl <- trainControl(method = "cv", number = 10)
+  }
 
+  params <- expand.grid(C=cost)
+  model <- train(hr ~ . , data=data, method='svmLinear',
+              trControl=fitControl, tuneGrid=params)
 
-  st <- tune(svm, hr ~ ., data=data,
-             kernel='linear', ranges=list(epsilon=epsilon, cost=cost), fitted=FALSE,
-             cachesize=128, tunecontrol=tune.control(cross=10))
-  best <- st$best.model
-  res <- svm_predicted(best, data, slopes)
+  res <- svm_predicted(model, data, slopes, hrs)
+  model$fitted <- res$y
+  model$x <- res$x
 
   # get intercept/slope to append $coefficients
-  x0 <- cbind(t(numeric(1 + slopes)))
-  names(x0) <- c('speed', paste0('slope', seq(1:slopes)))
-  intercept <- predict(best, x0)
+  x0 <- data.frame(t(numeric(1 + 2 + slopes + hrs)))
+  names(x0) <- c('speed', paste0('slope', seq(0, slopes)), paste0('hrchange', seq(0, hrs))) 
+  intercept <- predict(model, x0)
   slope <- (res$y[2] - res$y[1]) / (res$x[2] - res$x[1])
-
-  best$coefficients <- c(intercept, slope)
-  best$fitted <- res$y
-  best$x <- res$x
-  best
+  model$coefficients <- c(intercept, slope)
+  model$error <- model$results$RMSE
+  model$slopes <- slopes
+  model$hrs <- hrs
+  model
 }
 
-svm_radial <- function(data, slopes){
-  data <- svm_data(data, slopes)
+svm_radial <- function(data, slopes=5, hrs=5, search=F){
+  data <- svm_prepare_data(data, slopes, hrs)
   # found params
-  cost <- 0.1
-  epsilon <- 0
-  gamma <- c(0.1)
+  if( search ){
+    gamma <- 10^seq(-7,-2, length.out=10)
+    cost <- 10^seq(-10,2)
+    fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
+  } else {
+    cost <- 10
+    gamma <- 0.05
+    fitControl <- trainControl(method = "cv", number = 10)
+  }
 
-  st <- tune(svm, hr ~ ., data=data,
-             kernel='radial', ranges=list(gamma=gamma, epsilon=epsilon, cost=cost), fitted=FALSE,
-             cachesize=128, tunecontrol=tune.control(cross=10))
-  best <- st$best.model
-  res <- svm_predicted(best, data, slopes)
+  params <- expand.grid(C=cost, sigma=gamma)
+  model <- train(hr ~ . , data=data, method='svmRadialSigma',
+              trControl=fitControl, tuneGrid=params)
 
-  best$fitted <- res$y
-  best$x <- res$x
-  best
+  res <- svm_predicted(model, data, slopes, hrs)
+  model$fitted <- res$y
+  model$x <- res$x
+
+  model$error <- model$results$RMSE
+  model$slopes <- slopes
+  model$hrs <- hrs
+  model
 }
