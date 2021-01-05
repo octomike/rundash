@@ -24,13 +24,16 @@ run_rename_select <- function(data){
 
 run_fix_resolution <- function(data){
 
-  durations <- lead(data$timestamp) - data$timestamp
-  durations <- durations[1 : (length(durations) - 1)]
-  if ( mean(durations[length(durations)-1]) == 1 ) {
+  durations <- head(lead(data$timestamp) - data$timestamp, -1)
+  if ( all(durations == 1) ) {
     return(data)
   }
-  m <- mean(durations[length(durations)-1])
-  message(sprintf('Attempting to fix low-resolution data (rate = %d s)', m))
+  if( median(durations) == 1 ){
+    message('Filling stops in your run')
+  } else {
+    message(sprintf('Detected low-resolution data (rate = %d s), interpolating', mean(durations)))
+  }
+
   datafull <- data.frame(matrix(ncol=length(names(data)),
                                 nrow=0))
   colnames(datafull) <- names(data)
@@ -41,6 +44,9 @@ run_fix_resolution <- function(data){
     # add start record
     datafull <- rbind(datafull, currrow)
     # interpolate intermediate records
+    if(dur==1){
+      next
+    }
     for(tinterp in 1:(dur-1)){
       irow <- list(timestamp = currrow$timestamp + tinterp,
                    lat = currrow$lat + tinterp * (nextrow$lat - currrow$lat) / dur,
