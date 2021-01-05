@@ -17,7 +17,7 @@ run_rename_select <- function(data){
   cols$altitude <- 'enhanced_altitude'
 
   data %>%
-    select(-drops) %>%
+    select(-all_of(drops)) %>%
     rename(!!!cols) %>%
     select(!!!names(cols))
 }
