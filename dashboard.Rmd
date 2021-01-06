@@ -202,10 +202,11 @@ analysisdata <- reactive({
   })
   if (grepl('SVM', input$modelType)) {
     message('fitting SVM linear')
-    rv$lmfit <- svm_lin(d, slopes=6, hrs=7)
+    rv$lmfit <- svm_lin(d, slopes=input$slopes, hrs=input$hrs, C=0.1)
     message(sprintf("error %f\n", rv$lmfit$error))
-    message('fitting radial SVM linear')
-    rv$mfit <- svm_radial(d, slopes=6, hrs=7)
+    message('fitting radial SVM')
+    rv$mfit <- svm_radial(d, slopes=input$slopes, hrs=input$hrs,
+                          C=2^input$C, sigma=2^input$sigma)
     message(sprintf("error %f\n", rv$mfit$error))
   } else {
     message('fitting LOESS/LM models')
@@ -392,17 +393,13 @@ fillCol(
 Analysis
 ========
 
-Row {data-height=80}
+Row {data-height=200}
 --------------------
 
-### Speed threshold
+### Trim Data
 ```{r}
 sliderInput('lowerQuantile', value=0.25, min=0, max=1.0, step=0.05,
             'Drop lower quantile speed data')
-```
-
-### Remove Outlier
-```{r}
 checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 ```
 
@@ -410,6 +407,23 @@ checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 ```{r}
 radioButtons('modelType', 'Type of Model', choices = c('Loess/LM', 'SVM Regression'), selected = 'Loess/LM')
 ```
+
+### Features
+```{r}
+sliderInput('slopes', value=6, min=0, max=9, step=1,
+            'log2(window size) of slope backlog')
+sliderInput('hrs', value=8, min=0, max=9, step=1,
+            'log2(window size) of HR backlog')
+```
+
+### SVM Params
+```{r}
+sliderInput('C', value=3, min=-15, max=5, step=1,
+            'log2(C) / cost')
+sliderInput('sigma', value=-2, min=-15, max=5, step=1,
+            'log2(sigma) / RBF parameter')
+```
+
 
 Row {.tabset}
 ---

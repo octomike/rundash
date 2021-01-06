@@ -190,7 +190,7 @@ calc_hrdp <- function(data, lmfit, mfit){
   print(head(data %>% filter(dist > 0, zeros==T)))
   hrdp$speed <- data %>% filter(dist > 0, zeros==T) %>% tail(1) %>% select('speed') %>% pull()
   if( length(hrdp$speed) == 0 ){
-    stop('could not find a local maximum')
+    stop("no local maximum")
   }
   hrdp$pace <- 60/3.6/hrdp$speed
   hrdp$hr <- data %>% filter(speed==hrdp$speed) %>% select('hrfit') %>% tail(1) %>% pull()
@@ -202,7 +202,6 @@ svm_prepare_data <- function(data, slopes, hrs){
   svmdata <- data %>% select(all_of(base_features))
   max_buckets <- floor(log2(nrow(svmdata)/2))
   for(i in 0:min(slopes, max_buckets)){
-    #svmdata <- cbind(svmdata, lag(svmdata$slope, n=i, default=0))
     k <- 2**(max_buckets - i)
     ms <- rollmean(svmdata$slope, k,  align='right')
     if(k>1){
@@ -211,7 +210,6 @@ svm_prepare_data <- function(data, slopes, hrs){
     svmdata <- cbind(svmdata, ms)
   }
   for(i in 0:min(hrs, max_buckets)){
-    #svmdata <- cbind(svmdata, lag(svmdata$hrchange, n=i, default=0))
     k <- 2**(max_buckets - i)
     ms <- rollmean(svmdata$hrchange, k,  align='right')
     if(k>1){
@@ -219,7 +217,8 @@ svm_prepare_data <- function(data, slopes, hrs){
     }
     svmdata <- cbind(svmdata, ms)
   }
-  names(svmdata) <- c(base_features, paste0('slope', seq(0, slopes)), paste0('hrchange', seq(0, hrs)))
+  names(svmdata) <- c(base_features, paste0('slope', seq(0, slopes)),
+                                     paste0('hrchange', seq(0, hrs)))
   svmdata %>% select(-c('hrchange', 'slope')) %>% drop_na()
 }
 
@@ -235,17 +234,16 @@ svm_predicted <- function(model, data, slopes, hrs){
 }
 
 
-svm_lin <- function(data, slopes=5, hrs=5, search=F){
+svm_lin <- function(data, slopes=5, hrs=5, C=NULL){
   data <- svm_prepare_data(data, slopes, hrs)
-  if( search ){
-    cost <- 10^seq(-10,2)
+  if( is.null(C) ){
+    C <- 10^seq(-10,2)
     fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
   } else {
-    cost <- 0.1
     fitControl <- trainControl(method = "cv", number = 10)
   }
 
-  params <- expand.grid(C=cost)
+  params <- expand.grid(C=C)
   model <- train(hr ~ . , data=data, method='svmLinear',
               trControl=fitControl, tuneGrid=params)
 
@@ -265,27 +263,30 @@ svm_lin <- function(data, slopes=5, hrs=5, search=F){
   model
 }
 
-svm_radial <- function(data, slopes=5, hrs=5, search=F){
+svm_radial <- function(data, slopes=5, hrs=5, C=NULL, sigma=NULL){
   data <- svm_prepare_data(data, slopes, hrs)
   # found params
-  if( search ){
-    gamma <- 10^seq(-7,-2, length.out=10)
-    cost <- 10^seq(-10,2)
-    fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
+  # https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
+  if( is.null(C) || is.null(sigma) ){
+    #sigma <- 10^seq(-7,-2, length.out=10)
+    #sigma <- 2^seq(-15, 3)
+    sigma <- 2^seq(-5, -1)
+    #C <- 2^seq(-15, 5)
+    C <- 2^seq(-3, 3)
+    fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2,
+                               returnData = FALSE, trim = TRUE)
   } else {
-    cost <- 10
-    gamma <- 0.05
     fitControl <- trainControl(method = "cv", number = 10)
   }
 
-  params <- expand.grid(C=cost, sigma=gamma)
+  registerDoFuture()
+  params <- expand.grid(C=C, sigma=sigma)
   model <- train(hr ~ . , data=data, method='svmRadialSigma',
               trControl=fitControl, tuneGrid=params)
 
   res <- svm_predicted(model, data, slopes, hrs)
   model$fitted <- res$y
   model$x <- res$x
-
   model$error <- model$results$RMSE
   model$slopes <- slopes
   model$hrs <- hrs
