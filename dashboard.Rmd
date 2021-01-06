@@ -464,6 +464,7 @@ hrdp <- reactive({
     list(string=sprintf('%s min/km | %.0f bpm', format_pace(hrdpval$pace), round(hrdpval$hr)),
          numeric=hrdpval$speed)
     }, error = function(cond) {
+      rv$hrdpCache <- NULL
       message('Could not calculate hrdp')
       message(cond$message)
       list(string=cond$message)
