@@ -26,6 +26,7 @@ library(fit) # install_github('octomike/fit')
 library(zoo)
 library(caret)
 library(doFuture)
+library(doMC)
 library(ring)
 
 options(shiny.reactlog = FALSE)
@@ -202,12 +203,14 @@ analysisdata <- reactive({
   })
   if (grepl('SVM', input$modelType)) {
     message('fitting SVM linear')
-    rv$lmfit <- svm_lin(d, slopes=input$slopes, hrs=input$hrs, C=0.1)
+    rv$lmfit <- svm_lin(d, slopes=input$slopes, hrs=input$hrs, C=0.05)
     message(sprintf("error %f\n", rv$lmfit$error))
+    message(sprintf("tune: %s\n", rv$lmfit$bestTune))
     message('fitting radial SVM')
     rv$mfit <- svm_radial(d, slopes=input$slopes, hrs=input$hrs,
                           C=2^input$C, sigma=2^input$sigma)
     message(sprintf("error %f\n", rv$mfit$error))
+    message(sprintf("tune: %s\n", rv$mfit$bestTune))
   } else {
     message('fitting LOESS/LM models')
     lmfit <- lm(hr ~ speed, data = d)
@@ -350,10 +353,12 @@ observe({
 
 # set current marker when updated from charts or when we load new data
 observe({
+  runnerIcon <- makeIcon('res/running-solid.svg',
+                         iconWidth='24', iconHeight='24')
   current <- fitdata() %>% slice(input$currentLocation)
   leafletProxy('map') %>%
     clearGroup('current') %>%
-    addMarkers(lng=current$long, lat=current$lat, group='current')
+    addMarkers(lng=current$long, lat=current$lat, group='current', icon=runnerIcon)
 })
 
 # draw current range
@@ -418,9 +423,9 @@ sliderInput('hrs', value=8, min=0, max=9, step=1,
 
 ### SVM Params
 ```{r}
-sliderInput('C', value=3, min=-15, max=5, step=1,
+sliderInput('C', value=3, min=-5, max=15, step=0.5,
             'log2(C) / cost')
-sliderInput('sigma', value=-2, min=-15, max=5, step=1,
+sliderInput('sigma', value=-2, min=-15, max=5, step=0.5,
             'log2(sigma) / RBF parameter')
 ```
 

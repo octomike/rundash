@@ -29,7 +29,7 @@ run_fix_resolution <- function(data){
     return(data)
   }
   if( median(durations) == 1 ){
-    message('Filling stops in your run')
+    message('Interpolating gaps')
   } else {
     message(sprintf('Detected low-resolution data (rate = %d s), interpolating', mean(durations)))
   }
@@ -235,12 +235,15 @@ svm_predicted <- function(model, data, slopes, hrs){
 
 
 svm_lin <- function(data, slopes=5, hrs=5, C=NULL){
+  registerDoFuture()
+  plan(multisession)
   data <- svm_prepare_data(data, slopes, hrs)
-  if( is.null(C) ){
-    C <- 10^seq(-10,2)
+  search <- is.null(C)
+  if(search){
+    C <- 10^seq(-3, 0, length.out=20)
     fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2)
   } else {
-    fitControl <- trainControl(method = "cv", number = 10)
+    fitControl <- trainControl(method = "none")
   }
 
   params <- expand.grid(C=C)
@@ -257,38 +260,50 @@ svm_lin <- function(data, slopes=5, hrs=5, C=NULL){
   intercept <- predict(model, x0)
   slope <- (res$y[2] - res$y[1]) / (res$x[2] - res$x[1])
   model$coefficients <- c(intercept, slope)
-  model$error <- model$results$RMSE
+  model$error <- min(model$results$RMSE)
   model$slopes <- slopes
   model$hrs <- hrs
+  if(search){
+    model$modelInfo <- NULL
+    model$finalModel <- NULL
+  }
   model
 }
 
 svm_radial <- function(data, slopes=5, hrs=5, C=NULL, sigma=NULL){
+  registerDoFuture()
   data <- svm_prepare_data(data, slopes, hrs)
-  # found params
-  # https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
-  if( is.null(C) || is.null(sigma) ){
-    #sigma <- 10^seq(-7,-2, length.out=10)
-    #sigma <- 2^seq(-15, 3)
-    sigma <- 2^seq(-5, -1)
-    #C <- 2^seq(-15, 5)
-    C <- 2^seq(-3, 3)
+  search <- is.null(C) || is.null(sigma)
+  if(search){
+    # https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf, page5
+    # for search='grid' we can use:
+    # sigma <- 2^seq(-15, 3, length.out=10)
+    # C <- 2^seq(-5, 15, length.out=10)
+    # search='random' uses hard coded caret ranges
     fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 2,
-                               returnData = FALSE, trim = TRUE)
+                               returnData = FALSE, trim = TRUE, search='random')
   } else {
-    fitControl <- trainControl(method = "cv", number = 10)
+    fitControl <- trainControl(method = "none")
   }
 
-  registerDoFuture()
-  params <- expand.grid(C=C, sigma=sigma)
-  model <- train(hr ~ . , data=data, method='svmRadialSigma',
-              trControl=fitControl, tuneGrid=params)
+  if(search){
+    model <- train(hr ~ . , data=data, method='svmRadialSigma',
+                trControl=fitControl, tuneLength=200)
+  } else {
+    params <- expand.grid(C=C, sigma=sigma)
+    model <- train(hr ~ . , data=data, method='svmRadialSigma',
+                trControl=fitControl, tuneGrid=params)
+  }
 
   res <- svm_predicted(model, data, slopes, hrs)
   model$fitted <- res$y
   model$x <- res$x
-  model$error <- model$results$RMSE
+  model$error <- min(model$results$RMSE)
   model$slopes <- slopes
   model$hrs <- hrs
+  if(search){
+    model$modelInfo <- NULL
+    model$finalModel <- NULL
+  }
   model
 }
