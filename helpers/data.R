@@ -31,7 +31,7 @@ run_fix_resolution <- function(data){
   if( median(durations) == 1 ){
     message('Filling stops in your run')
   } else {
-    message(sprintf('Detected low-resolution data (rate = %d s), interpolating', mean(durations)))
+    message(sprintf('Detected low-resolution data (rate = %f s), interpolating', mean(durations)))
   }
 
   datafull <- data.frame(matrix(ncol=length(names(data)),
@@ -153,6 +153,7 @@ format_pace <- function(pace){
 
 calc_hrdp <- function(data, lmfit, mfit){
 
+  #save(data, lmfit, mfit, file='debug.Rdata')
   # some custom checks
   if(nrow(data) < 10){
     stop('not enough data')
@@ -177,7 +178,7 @@ calc_hrdp <- function(data, lmfit, mfit){
   print(head(data))
   data$speed <- lmfit$x
   data$hrfit <- mfit$fitted
-  data <- data %>% arrange(speed) %>% select(c('hrfit', 'speed'))
+  data <- data %>% arrange(speed) %>% select(c('hrfit', 'speed')) %>% distinct()
   print(lmfit$coefficients)
 
   # get distance from non-linear fitted values to linear fit
@@ -187,8 +188,8 @@ calc_hrdp <- function(data, lmfit, mfit){
   data <- data %>% drop_na() %>% mutate(zeros = as.logical((distfo >0) - (lag(distfo)>0)) )
 
   # collect results
-  print(head(data %>% filter(dist > 0, zeros==T)))
-  hrdp$speed <- data %>% filter(dist > 0, zeros==T) %>% tail(1) %>% select('speed') %>% pull()
+  print(data %>% filter(dist > 0, zeros==T))
+  hrdp$speed <- data %>% filter(dist > 0, zeros==T) %>% arrange('speed') %>% head(1) %>% pull('speed')
   if( length(hrdp$speed) == 0 ){
     stop("no local maximum")
   }

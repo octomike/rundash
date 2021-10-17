@@ -26,7 +26,6 @@ library(fit) # install_github('octomike/fit')
 library(zoo)
 library(caret)
 library(doFuture)
-library(ring)
 
 options(shiny.reactlog = FALSE)
 
@@ -38,8 +37,9 @@ source("helpers/control.R")
 
 # global variables
 rv <- reactiveValues(hrMethod=NULL, hrdpCache=NULL, elevationCache=NULL,
-                     mfit=NULL, lmfit=NULL, lmspan=1.0, logs=ring::ring_buffer_env(5),
-                     refresh=0)
+                     mfit=NULL, lmfit=NULL, lmspan=1.0)
+
+
 methodLabels <- c('Automatic', 'Lactate Threshold', 'Maximum HR')
 hlCallbackJs <- 'function(event, x, points, row, seriesName){
   Shiny.setInputValue("currentLocation", row);
@@ -87,21 +87,6 @@ dateInput('rangeStart', '', NULL)
 dateInput('rangeStop', '', NULL)
 ```
 
-### Application Log
-
-```{r}
-observe({
-  updated <- rv$refresh
-  buf <- rv$logs
-  for(msg in buf$read(buf$used())){
-    message(msg)
-    renderText(msg)
-  }
-})
-```
-
-
-
 
 ```{r}
 
@@ -115,6 +100,7 @@ rawdata <- reactive({
 # data cleaning and fixing
 fitdata <- reactive({
     raw <- rawdata()
+    validate(need('heart_rate' %in% colnames(raw$record), 'Fit file does not contain any heart rate data :('))
     if ( str_detect(input$hrmethod, 'Automatic') ) {
       if ( 'threshold_heart_rate' %in% names(raw$zones_target) ) {
         updateSelectInput(session, 'hrmethod', label='HR based on', selected=methodLabels[1])
@@ -405,7 +391,7 @@ checkboxInput('removeOutlier', label='Remove Outlier', value=TRUE)
 
 ### Model
 ```{r}
-radioButtons('modelType', 'Type of Model', choices = c('Loess/LM', 'SVM Regression'), selected = 'Loess/LM')
+radioButtons('modelType', 'Type of Model', choices = c('Loess/LM', 'SVM Regression (experimental)'), selected = 'Loess/LM')
 ```
 
 ### Features
