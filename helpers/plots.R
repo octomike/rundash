@@ -33,7 +33,7 @@ HRPacePlot <- function(data, lmfit, mfit, HR, rv){
       if( !is.null(hrdpval) ){
         data <- data.frame(x=hrdpval$speed, y=hrdpval$hr)
         plot <- plot +
-          geom_point(aes(x,y,size=5), data=data) +
+          geom_point(aes(x,y), colour='#308000', size=7, data=data) +
           guides(size=FALSE)
       }
     } else {
